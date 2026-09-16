@@ -90,7 +90,13 @@ export function DatasetDialog({
     params.set('geometry', geometry)
     params.set('size', '100')
     const tags = eovTagUrls(eovVocabulary, eovCategories)
-    if (tags.length) params.set('tags', tags.join(','))
+    if (!tags.length) {
+      setData(null)
+      setError(eovVocabulary ? 'No EOV tags available.' : 'EOV vocabulary still loading…')
+      setLoading(false)
+      return
+    }
+    params.set('tags', tags.join(','))
 
     fetch(`${OBIS_DATASET_API}?${params}`, { signal: controller.signal })
       .then((r) => {

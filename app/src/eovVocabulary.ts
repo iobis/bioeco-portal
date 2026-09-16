@@ -87,12 +87,17 @@ export function getFallbackBadge(index: number): EovBadge {
   return FALLBACK_PALETTE[index % FALLBACK_PALETTE.length]
 }
 
-/** Resolve selected top-level EOV codes to canonical URLs for OBIS `tags=` filters. */
+/** Resolve EOV codes to canonical URLs for OBIS `tags=` filters.
+ *  Empty selection → all top-level EOVs (BioEco scope by default).
+ */
 export function eovTagUrls(vocab: EovVocabulary | null, codes: string[]): string[] {
-  if (!vocab?.top_level_eovs?.length || !codes.length) return []
+  if (!vocab?.top_level_eovs?.length) return []
+  const selected = codes.length
+    ? codes
+    : vocab.top_level_eovs.map((e) => e.code)
   const byCode = Object.fromEntries(vocab.top_level_eovs.map((e) => [e.code, e]))
   const urls: string[] = []
-  for (const code of codes) {
+  for (const code of selected) {
     const url = byCode[code]?.url?.trim()
     if (url) urls.push(url)
   }

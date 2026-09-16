@@ -689,17 +689,15 @@ export function Map({
 
     setProgrammeGridVisible(false)
 
-    // No EOV selection → unfiltered OBIS tiles (all records). Selected EOVs → tags= filter.
     const tags = eovTagUrls(eovVocabulary, selectedEovCategories)
-    if (selectedEovCategories.length && !tags.length) {
+    if (!tags.length) {
       removeObis()
       return
     }
 
     const params = new URLSearchParams()
-    if (tags.length) params.set('tags', tags.join(','))
-    const queryString = params.toString()
-    const tileUrl = `${OBIS_TILE_TEMPLATE}${queryString ? `?${queryString}` : ''}`
+    params.set('tags', tags.join(','))
+    const tileUrl = `${OBIS_TILE_TEMPLATE}?${params.toString()}`
 
     removeObis()
     map.addSource(OBIS_SOURCE_ID, {
@@ -927,7 +925,7 @@ export function Map({
               ))}
             </div>
             {isDataLayer && !selectedEovCategories.length ? (
-              <p className="map-data-hint">Showing all OBIS records; select EOVs to filter by tags.</p>
+              <p className="map-data-hint">Showing all EOVs; select to filter OBIS occurrences.</p>
             ) : null}
           </div>
         ) : null}
