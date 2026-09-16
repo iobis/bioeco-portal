@@ -491,6 +491,11 @@
   color: var(--muted);
 }
 
+.list-meta {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
 .list-error {
   color: #b91c1c;
 }
@@ -526,6 +531,11 @@
   font: inherit;
 }
 
+a.project-card-link {
+  text-decoration: none;
+  color: inherit;
+}
+
 .project-link {
   font-weight: 600;
   font-size: 13px;
@@ -544,6 +554,11 @@
   color: var(--muted);
   line-height: 1.45;
   overflow-wrap: break-word;
+}
+
+.project-desc--meta {
+  font-weight: 500;
+  color: var(--text);
 }
 
 .project-eov-badges {
@@ -867,6 +882,84 @@
   max-height: 85vh;
   display: flex;
   flex-direction: column;
+}
+
+.dialog-box--datasets {
+  max-width: 560px;
+}
+
+.dialog-list-summary {
+  padding-bottom: 8px;
+}
+
+.dialog-dataset-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dialog-dataset-item {
+  border-top: 1px solid var(--border);
+}
+
+.dialog-dataset-item:first-child {
+  border-top: none;
+}
+
+.dialog-dataset-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 0;
+  text-decoration: none;
+  color: inherit;
+}
+
+.dialog-dataset-link:hover .dialog-dataset-title {
+  text-decoration: underline;
+}
+
+.dialog-dataset-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--accent);
+  line-height: 1.35;
+  overflow-wrap: break-word;
+}
+
+.dialog-dataset-meta {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.dialog-dataset-blurb {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+  overflow-wrap: break-word;
+}
+
+.dialog-dataset-eovs {
+  margin-top: 6px;
+}
+
+.dialog-dataset-eov {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+}
+
+.dialog-dataset-eov .project-eov-bubble::after {
+  content: none;
+}
+
+.dialog-dataset-eov-label {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--text);
+  overflow-wrap: break-word;
 }
 
 .import-report-body h2 {

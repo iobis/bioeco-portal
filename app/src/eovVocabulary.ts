@@ -86,3 +86,15 @@ export function buildEovResolver(vocab: EovVocabulary | null): (uri: string) => 
 export function getFallbackBadge(index: number): EovBadge {
   return FALLBACK_PALETTE[index % FALLBACK_PALETTE.length]
 }
+
+/** Resolve selected top-level EOV codes to canonical URLs for OBIS `tags=` filters. */
+export function eovTagUrls(vocab: EovVocabulary | null, codes: string[]): string[] {
+  if (!vocab?.top_level_eovs?.length || !codes.length) return []
+  const byCode = Object.fromEntries(vocab.top_level_eovs.map((e) => [e.code, e]))
+  const urls: string[] = []
+  for (const code of codes) {
+    const url = byCode[code]?.url?.trim()
+    if (url) urls.push(url)
+  }
+  return urls
+}

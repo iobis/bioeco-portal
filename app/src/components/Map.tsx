@@ -1,7 +1,7 @@
 import maplibregl, { type StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
-import type { EovVocabulary } from '../eovVocabulary'
+import { eovTagUrls, type EovVocabulary } from '../eovVocabulary'
 import type { ProgrammeStatus } from '../programmeStatus'
 import { PROGRAMME_STATUS_OPTIONS } from '../programmeStatus'
 import type { ColorSchemeId, MapLayerMode } from '../urlState'
@@ -21,8 +21,10 @@ const HIGHLIGHT_SOURCE_ID = 'project-highlight'
 const HIGHLIGHT_LAYER_ID = 'project-highlight-layer'
 const CELL_HIGHLIGHT_SOURCE_ID = 'cell-highlight'
 const CELL_HIGHLIGHT_LAYER_ID = 'cell-highlight-layer'
+const CELL_HIGHLIGHT_OUTLINE_LAYER_ID = 'cell-highlight-outline'
 const CELL_HOVER_SOURCE_ID = 'cell-hover'
 const CELL_HOVER_LAYER_ID = 'cell-hover-layer'
+const CELL_HOVER_OUTLINE_LAYER_ID = 'cell-hover-outline'
 const PROJECT_GRID_LAYER_ID = 'project-grid'
 const OBIS_SOURCE_ID = 'obis-occurrence'
 const OBIS_LAYER_ID = 'obis-occurrence-fill'
@@ -36,6 +38,8 @@ const BASEMAP_MAX_ZOOM = 12
 /** Map land/ocean fill; grid cells are drawn over this. */
 const MAP_SURFACE = '#f8fafc'
 const DEFAULT_GRID_OPACITY = 0.4
+const CELL_ACCENT = '#0284c7'
+const CELL_ACCENT_FILL = '#38bdf8'
 
 /** Six-stop sequential ramps for grid choropleths (low → high). */
 const COLOR_SCHEMES: Record<
@@ -103,21 +107,6 @@ const MAP_LAYER_OPTIONS: { value: MapLayerMode; label: string }[] = [
   { value: 'eovs', label: 'EOVs' },
   { value: 'data', label: 'Data' },
 ]
-
-function eovTagUrls(vocab: EovVocabulary | null, codes: string[]): string[] {
-  if (!vocab?.top_level_eovs?.length) return []
-  // Empty selection → all top-level EOVs (data layer shows full OBIS coverage by default).
-  const selected = codes.length
-    ? codes
-    : vocab.top_level_eovs.map((e) => e.code)
-  const byCode = Object.fromEntries(vocab.top_level_eovs.map((e) => [e.code, e]))
-  const urls: string[] = []
-  for (const code of selected) {
-    const url = byCode[code]?.url?.trim()
-    if (url) urls.push(url)
-  }
-  return urls
-}
 
 function parseHex(hex: string): [number, number, number] {
   const h = hex.replace('#', '')
@@ -254,9 +243,11 @@ export function Map({
   const readinessAnchorRef = useRef<Partial<Record<ReadinessDimension, number>>>({})
   const hoveredIdRef = useRef<string | null>(null)
   const selectedCellBboxRef = useRef<string | null>(null)
+  const onCellClickRef = useRef(onCellClick)
   const onGlobeChangeRef = useRef(onGlobeChange)
   const globeRef = useRef(globe)
   onGlobeChangeRef.current = onGlobeChange
+  onCellClickRef.current = onCellClick
   globeRef.current = globe
   hoveredIdRef.current = hoveredProjectId ?? null
   selectedCellBboxRef.current = selectedCellBbox ?? null
@@ -397,9 +388,21 @@ export function Map({
             type: 'fill',
             source: CELL_HOVER_SOURCE_ID,
             paint: {
-              'fill-color': '#fde047',
-              'fill-opacity': 0.2,
-              'fill-outline-color': '#ca8a04',
+              'fill-color': CELL_ACCENT_FILL,
+              'fill-opacity': 0.12,
+            },
+          },
+          'project-grid-labels'
+        )
+        map.addLayer(
+          {
+            id: CELL_HOVER_OUTLINE_LAYER_ID,
+            type: 'line',
+            source: CELL_HOVER_SOURCE_ID,
+            paint: {
+              'line-color': CELL_ACCENT,
+              'line-width': 2,
+              'line-opacity': 0.9,
             },
           },
           'project-grid-labels'
@@ -408,17 +411,29 @@ export function Map({
 
       const hoverSource = map.getSource(CELL_HOVER_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
 
+      const interactiveGridLayers = (): string[] => {
+        if (mapLayerRef.current === 'data') {
+          return map.getLayer(OBIS_LAYER_ID) ? [OBIS_LAYER_ID] : []
+        }
+        return map.getLayer(PROJECT_GRID_LAYER_ID) ? [PROJECT_GRID_LAYER_ID] : []
+      }
+
       const updateHover = (point: maplibregl.Point) => {
-        const features = map.queryRenderedFeatures(point, { layers: [PROJECT_GRID_LAYER_ID] })
+        const layers = interactiveGridLayers()
+        const features = layers.length
+          ? map.queryRenderedFeatures(point, { layers })
+          : []
         if (hoverSource) {
           if (features.length && features[0].geometry) {
             hoverSource.setData({
               type: 'Feature',
-              geometry: features[0].geometry as GeoJSON.Polygon,
+              geometry: features[0].geometry as GeoJSON.Geometry,
               properties: {},
             })
+            map.getCanvas().style.cursor = 'pointer'
           } else {
             hoverSource.setData(EMPTY_GEOJSON)
+            map.getCanvas().style.cursor = ''
           }
         }
       }
@@ -428,22 +443,23 @@ export function Map({
       })
       map.getCanvas().addEventListener('mouseleave', () => {
         if (hoverSource) hoverSource.setData(EMPTY_GEOJSON)
+        map.getCanvas().style.cursor = ''
       })
 
-      if (onCellClick) {
-        map.on('click', (e) => {
-          const features = map.queryRenderedFeatures(e.point, { layers: [PROJECT_GRID_LAYER_ID] })
-          if (features.length && features[0].geometry) {
-            const bbox = bboxFromFeatureGeometry(features[0].geometry as GeoJSON.Geometry)
-            if (bbox) {
-              const bboxStr = bboxToString(bbox)
-              const current = selectedCellBboxRef.current
-              onCellClick(current === bboxStr ? null : bboxStr)
-            }
+      map.on('click', (e) => {
+        if (!onCellClickRef.current) return
+        const layers = interactiveGridLayers()
+        if (!layers.length) return
+        const features = map.queryRenderedFeatures(e.point, { layers })
+        if (features.length && features[0].geometry) {
+          const bbox = bboxFromFeatureGeometry(features[0].geometry as GeoJSON.Geometry)
+          if (bbox) {
+            const bboxStr = bboxToString(bbox)
+            const current = selectedCellBboxRef.current
+            onCellClickRef.current(current === bboxStr ? null : bboxStr)
           }
-        })
-        map.getCanvas().style.cursor = 'pointer'
-      }
+        }
+      })
     }
 
     const onLoad = () => {
@@ -663,12 +679,6 @@ export function Map({
           visible && showGridLabelsRef.current ? 'visible' : 'none',
         )
       }
-      if (map.getLayer(CELL_HOVER_LAYER_ID)) {
-        map.setLayoutProperty(CELL_HOVER_LAYER_ID, 'visibility', visibility)
-      }
-      if (map.getLayer(CELL_HIGHLIGHT_LAYER_ID)) {
-        map.setLayoutProperty(CELL_HIGHLIGHT_LAYER_ID, 'visibility', visibility)
-      }
     }
 
     if (mapLayer !== 'data') {
@@ -679,15 +689,17 @@ export function Map({
 
     setProgrammeGridVisible(false)
 
+    // No EOV selection → unfiltered OBIS tiles (all records). Selected EOVs → tags= filter.
     const tags = eovTagUrls(eovVocabulary, selectedEovCategories)
-    if (!tags.length) {
+    if (selectedEovCategories.length && !tags.length) {
       removeObis()
       return
     }
 
     const params = new URLSearchParams()
-    params.set('tags', tags.join(','))
-    const tileUrl = `${OBIS_TILE_TEMPLATE}?${params.toString()}`
+    if (tags.length) params.set('tags', tags.join(','))
+    const queryString = params.toString()
+    const tileUrl = `${OBIS_TILE_TEMPLATE}${queryString ? `?${queryString}` : ''}`
 
     removeObis()
     map.addSource(OBIS_SOURCE_ID, {
@@ -777,6 +789,7 @@ export function Map({
     if (!map || !map.getStyle()) return
 
     const removeCellHighlight = () => {
+      if (map.getLayer(CELL_HIGHLIGHT_OUTLINE_LAYER_ID)) map.removeLayer(CELL_HIGHLIGHT_OUTLINE_LAYER_ID)
       if (map.getLayer(CELL_HIGHLIGHT_LAYER_ID)) map.removeLayer(CELL_HIGHLIGHT_LAYER_ID)
       if (map.getSource(CELL_HIGHLIGHT_SOURCE_ID)) map.removeSource(CELL_HIGHLIGHT_SOURCE_ID)
     }
@@ -819,9 +832,21 @@ export function Map({
         type: 'fill',
         source: CELL_HIGHLIGHT_SOURCE_ID,
         paint: {
-          'fill-color': '#fde047',
-          'fill-opacity': 0.35,
-          'fill-outline-color': '#ca8a04',
+          'fill-color': CELL_ACCENT_FILL,
+          'fill-opacity': 0.18,
+        },
+      },
+      'project-grid-labels'
+    )
+    map.addLayer(
+      {
+        id: CELL_HIGHLIGHT_OUTLINE_LAYER_ID,
+        type: 'line',
+        source: CELL_HIGHLIGHT_SOURCE_ID,
+        paint: {
+          'line-color': CELL_ACCENT,
+          'line-width': 2.5,
+          'line-opacity': 1,
         },
       },
       'project-grid-labels'
@@ -902,7 +927,7 @@ export function Map({
               ))}
             </div>
             {isDataLayer && !selectedEovCategories.length ? (
-              <p className="map-data-hint">Showing all EOVs; select to filter OBIS occurrences.</p>
+              <p className="map-data-hint">Showing all OBIS records; select EOVs to filter by tags.</p>
             ) : null}
           </div>
         ) : null}

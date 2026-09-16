@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { EovVocabulary } from './eovVocabulary'
 import { Map } from './components/Map'
 import { ProjectList } from './components/ProjectList'
+import { DatasetDialog } from './components/DatasetDialog'
 import { AboutPage } from './components/AboutPage'
 import { DataQualityPage } from './components/DataQualityPage'
 import { ProjectDetailDialog } from './components/ProjectDetailDialog'
@@ -66,12 +67,15 @@ export default function App() {
   const [hoveredProjectId, setHoveredProjectId] = useState<string | null>(null)
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initial.programme)
   const [selectedCellBbox, setSelectedCellBbox] = useState<string | null>(initial.bbox)
+  const [datasetCellBbox, setDatasetCellBbox] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState(initial.q)
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(initial.q)
   const [programmeStatus, setProgrammeStatus] = useState(initial.status)
   const [selectedEovCategories, setSelectedEovCategories] = useState(initial.eov)
   const [selectedReadiness, setSelectedReadiness] = useState(initial.readiness)
   const [mapLayer, setMapLayer] = useState<MapLayerMode>(initial.layer)
+  const mapLayerRef = useRef(mapLayer)
+  mapLayerRef.current = mapLayer
   const [colorScheme, setColorScheme] = useState<ColorSchemeId>(initial.colour)
   const [gridOpacity, setGridOpacity] = useState(initial.opacity)
   const [showGridLabels, setShowGridLabels] = useState(initial.labels)
@@ -119,6 +123,10 @@ export default function App() {
     showGridLabels,
     globe,
   ])
+
+  useEffect(() => {
+    if (mapLayer !== 'data') setDatasetCellBbox(null)
+  }, [mapLayer])
 
   useEffect(() => {
     const onPopState = () => {
@@ -188,8 +196,11 @@ export default function App() {
         <div className="app-main">
           <Map
             hoveredProjectId={hoveredProjectId}
-            selectedCellBbox={selectedCellBbox}
-            onCellClick={setSelectedCellBbox}
+            selectedCellBbox={mapLayer === 'data' ? datasetCellBbox : selectedCellBbox}
+            onCellClick={(bbox) => {
+              if (mapLayerRef.current === 'data') setDatasetCellBbox(bbox)
+              else setSelectedCellBbox(bbox)
+            }}
             selectedEovCategories={selectedEovCategories}
             onEovCategoriesChange={setSelectedEovCategories}
             eovVocabulary={eovVocabulary}
@@ -213,7 +224,7 @@ export default function App() {
               <ProjectList
                 onHoverProject={setHoveredProjectId}
                 onSelectProject={setSelectedProjectId}
-                cellBbox={selectedCellBbox}
+                cellBbox={mapLayer === 'data' ? null : selectedCellBbox}
                 onClearCellFilter={() => setSelectedCellBbox(null)}
                 searchQuery={searchQuery}
                 onSearchQueryChange={setSearchQuery}
@@ -228,6 +239,12 @@ export default function App() {
           <ProjectDetailDialog
             projectId={selectedProjectId}
             onClose={() => setSelectedProjectId(null)}
+          />
+          <DatasetDialog
+            cellBbox={mapLayer === 'data' ? datasetCellBbox : null}
+            onClose={() => setDatasetCellBbox(null)}
+            eovCategories={selectedEovCategories}
+            eovVocabulary={eovVocabulary}
           />
         </div>
       ) : (
