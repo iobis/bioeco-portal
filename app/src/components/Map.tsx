@@ -105,10 +105,14 @@ const MAP_LAYER_OPTIONS: { value: MapLayerMode; label: string }[] = [
 ]
 
 function eovTagUrls(vocab: EovVocabulary | null, codes: string[]): string[] {
-  if (!vocab?.top_level_eovs?.length || !codes.length) return []
+  if (!vocab?.top_level_eovs?.length) return []
+  // Empty selection → all top-level EOVs (data layer shows full OBIS coverage by default).
+  const selected = codes.length
+    ? codes
+    : vocab.top_level_eovs.map((e) => e.code)
   const byCode = Object.fromEntries(vocab.top_level_eovs.map((e) => [e.code, e]))
   const urls: string[] = []
-  for (const code of codes) {
+  for (const code of selected) {
     const url = byCode[code]?.url?.trim()
     if (url) urls.push(url)
   }
@@ -898,7 +902,7 @@ export function Map({
               ))}
             </div>
             {isDataLayer && !selectedEovCategories.length ? (
-              <p className="map-data-hint">Select an EOV to show tagged OBIS occurrences.</p>
+              <p className="map-data-hint">Showing all EOVs; select to filter OBIS occurrences.</p>
             ) : null}
           </div>
         ) : null}
