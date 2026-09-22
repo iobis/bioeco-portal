@@ -214,17 +214,12 @@ export function ProjectList({
 
   return (
     <>
-      {cellBbox && onClearCellFilter && (
-        <div className="panel-cell-filter">
-          <div className="panel-cell-filter-inside">
-            <span className="panel-cell-filter-label">Map cell filter active</span>
-            <button type="button" className="panel-cell-filter-clear" onClick={onClearCellFilter}>
-              Clear
-            </button>
-          </div>
-        </div>
-      )}
       <div className="panel-search">
+        {cellBbox && onClearCellFilter && (
+          <button type="button" className="panel-cell-filter-clear" onClick={onClearCellFilter}>
+            Clear map filter
+          </button>
+        )}
         <input
           type="search"
           className="search-input"
