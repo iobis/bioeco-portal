@@ -5,6 +5,7 @@ export interface ProjectDetail {
   name: string
   description?: string
   url?: string
+  uri?: string
   start_year?: number
   end_year?: number
   eovs?: Array<{ code?: string; label?: string; name?: string; uri?: string }>
@@ -63,6 +64,25 @@ export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogP
           {project && !loading && (
             <>
               <h3 className="dialog-project-name">{project.name}</h3>
+              {project.url && (
+                <a
+                  href={project.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="dialog-website-link"
+                >
+                  <svg
+                    className="dialog-website-icon"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                  </svg>
+                  website
+                </a>
+              )}
               {project.description && (
                 <p className="dialog-description">{project.description}</p>
               )}
@@ -156,23 +176,16 @@ export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogP
                   </ul>
                 </div>
               ) : null}
-              {project.url && (
-                <p className="dialog-actions">
-                  <a href={project.url} target="_blank" rel="noopener noreferrer" className="dialog-link">
-                    Open project link
+              <p className="dialog-actions">
+                <a href={projectApiUrl ?? '#'} target="_blank" rel="noopener noreferrer" className="dialog-link dialog-link-muted">
+                  API record
+                </a>
+                {project.uri && (
+                  <a href={project.uri} target="_blank" rel="noopener noreferrer" className="dialog-link dialog-link-muted">
+                    JSON-LD
                   </a>
-                  <a href={projectApiUrl ?? '#'} target="_blank" rel="noopener noreferrer" className="dialog-link dialog-link-muted">
-                    View raw API
-                  </a>
-                </p>
-              )}
-              {!project.url && (
-                <p className="dialog-actions">
-                  <a href={projectApiUrl ?? '#'} target="_blank" rel="noopener noreferrer" className="dialog-link dialog-link-muted">
-                    View raw API
-                  </a>
-                </p>
-              )}
+                )}
+              </p>
             </>
           )}
         </div>
