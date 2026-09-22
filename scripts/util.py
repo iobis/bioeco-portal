@@ -72,6 +72,15 @@ def ensure_indices(client, clear_indexes: bool = False):
                 "start_year": {"type": "integer"},
                 "end_year": {"type": "integer"},
                 "url": {"type": "keyword"},
+                "identifiers": {
+                    "type": "nested",
+                    "properties": {
+                        "url": {"type": "keyword"},
+                        "value": {"type": "keyword"},
+                        "description": {"type": "keyword"},
+                        "property_id": {"type": "keyword"},
+                    },
+                },
                 "keywords": {"type": "keyword"},
                 "eovs": {
                     "type": "nested",
@@ -177,6 +186,16 @@ def ensure_indices(client, clear_indexes: bool = False):
                     }
                 },
             )
+
+    if client.indices.exists(index=project_index):
+        client.indices.put_mapping(
+            index=project_index,
+            body={
+                "properties": {
+                    "identifiers": project_mapping["mappings"]["properties"]["identifiers"]
+                }
+            },
+        )
 
     # Keep import_run history across --clear-indexes (project/grid rebuilds).
     if not client.indices.exists(index=import_run_index):
@@ -327,6 +346,64 @@ def as_list(value):
     if isinstance(value, list):
         return value
     return [value]
+
+
+def _schema_text(value) -> str:
+    """Flatten a JSON-LD string, {@value} object, or first non-empty list item."""
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        return str(value.get("@value") or get_schema(value, "value") or "").strip()
+    if isinstance(value, list):
+        for item in value:
+            text = _schema_text(item)
+            if text:
+                return text
+        return ""
+    return str(value).strip()
+
+
+def _identifier_from_item(item) -> dict | None:
+    """Return a populated identifier dict, or None if the source value is empty."""
+    if item is None:
+        return None
+    if isinstance(item, str):
+        text = item.strip()
+        if not text:
+            return None
+        if text.startswith("http://") or text.startswith("https://"):
+            return {"url": text, "value": "", "description": "", "property_id": ""}
+        return {"url": "", "value": text, "description": "", "property_id": ""}
+    if not isinstance(item, dict):
+        return None
+    url = _schema_text(get_schema(item, "url"))
+    value = _schema_text(get_schema(item, "value"))
+    description = _schema_text(get_schema(item, "description")) or _schema_text(get_schema(item, "name"))
+    property_id = _schema_text(get_schema(item, "propertyID"))
+    if not url and not value:
+        return None
+    return {
+        "url": url,
+        "value": value,
+        "description": description,
+        "property_id": property_id,
+    }
+
+
+def extract_identifiers(node: dict) -> list[dict]:
+    """Parse schema:identifier on a programme node; skip empty objects and blanks."""
+    identifiers = []
+    seen: set[tuple[str, str, str]] = set()
+    for item in as_list(get_schema(node, "identifier")):
+        parsed = _identifier_from_item(item)
+        if not parsed:
+            continue
+        key = (parsed["url"], parsed["value"], parsed["property_id"])
+        if key in seen:
+            continue
+        seen.add(key)
+        identifiers.append(parsed)
+    return identifiers
 
 
 def _shift_geom_longitude(geom, to_360: bool):
@@ -987,6 +1064,20 @@ def index_project_bindings(
                     del project["services"]
             else:
                 del project["services"]
+
+        if "identifiers" in project:
+            identifiers_value = project["identifiers"]
+            if identifiers_value:
+                try:
+                    parsed_identifiers = json.loads(identifiers_value)
+                    if isinstance(parsed_identifiers, list) and parsed_identifiers:
+                        project["identifiers"] = parsed_identifiers
+                    else:
+                        del project["identifiers"]
+                except Exception:
+                    del project["identifiers"]
+            else:
+                del project["identifiers"]
 
         logging.info(f"Loading project {project.get('name', '')} ({i + 1}/{len(results['results']['bindings'])})")
 

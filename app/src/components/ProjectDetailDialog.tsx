@@ -9,6 +9,12 @@ export interface ProjectDetail {
   start_year?: number
   end_year?: number
   eovs?: Array<{ code?: string; label?: string; name?: string; uri?: string }>
+  identifiers?: Array<{
+    url?: string
+    value?: string
+    description?: string
+    property_id?: string
+  }>
   contacts?: Array<{ name?: string; email?: string; url?: string; contact_type?: string }>
   services?: Array<{ name?: string; url?: string }>
   readiness_data?: string
@@ -19,6 +25,16 @@ export interface ProjectDetail {
 interface ProjectDetailDialogProps {
   projectId: string | null
   onClose: () => void
+}
+
+function identifierLabel(ident: {
+  url?: string
+  value?: string
+  description?: string
+}): string {
+  const parts = [ident.description?.trim(), ident.value?.trim()].filter(Boolean)
+  if (parts.length) return parts.join(' · ')
+  return ident.url?.trim() || 'Identifier'
 }
 
 export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogProps) {
@@ -92,6 +108,28 @@ export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogP
                   {project.start_year ?? '?'} – {project.end_year ?? '?'}
                 </p>
               )}
+              {project.identifiers?.length ? (
+                <div className="dialog-section">
+                  <span className="dialog-meta-label">Identifiers</span>
+                  <ul className="dialog-eov-list">
+                    {project.identifiers.map((ident, i) => {
+                      const label = identifierLabel(ident)
+                      const href = ident.url?.trim()
+                      return (
+                        <li key={i}>
+                          {href ? (
+                            <a href={href} target="_blank" rel="noopener noreferrer" className="dialog-link">
+                              {label}
+                            </a>
+                          ) : (
+                            label
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              ) : null}
               {(project.readiness_data || project.readiness_requirements || project.readiness_coordination) && (
                 <div className="dialog-section">
                   <span className="dialog-meta-label">Readiness levels</span>

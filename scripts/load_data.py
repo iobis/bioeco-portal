@@ -14,6 +14,7 @@ from util import (
     build_eov_by_id,
     create_es_client,
     ensure_indices,
+    extract_identifiers,
     extract_wkt,
     get_schema,
     index_project_bindings,
@@ -122,6 +123,9 @@ def build_bindings_from_jsonld_graph(graph):
         url = get_schema(node, "url")
         if url:
             b["url"] = {"value": url}
+        identifiers = extract_identifiers(node)
+        if identifiers:
+            b["identifiers"] = {"value": json.dumps(identifiers)}
 
         # Keywords (schema:keywords or keywords) – normalise to a comma-separated list of human-readable terms,
         # and also treat any keyword URLs that match the EOV vocabulary as EOVs (but avoid duplicating EOV names

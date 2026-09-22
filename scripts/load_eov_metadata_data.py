@@ -28,6 +28,7 @@ from util import (
     build_eov_by_id,
     create_es_client,
     ensure_indices,
+    extract_identifiers,
     extract_wkt,
     get_schema,
     index_project_bindings,
@@ -302,6 +303,9 @@ def build_bindings_from_eov_app_graph(
         url = get_schema(node, "url")
         if url and str(url).strip():
             b["url"] = {"value": str(url).strip()}
+        identifiers = extract_identifiers(node)
+        if identifiers:
+            b["identifiers"] = {"value": json.dumps(identifiers)}
 
         founding = get_schema(node, "foundingDate")
         if founding and str(founding).strip():
