@@ -12,6 +12,11 @@ Both write to the `project` and `project_grid` indices in Elasticsearch.
 - **Prerequisites**
   - Elasticsearch running and reachable.
   - `ELASTIC_PASSWORD` set in your environment for the `elastic` user.
+  - Loader dependencies installed:
+
+```bash
+pip install -r scripts/requirements.txt
+```
 
 - **Basic usage**
 
@@ -21,12 +26,29 @@ python scripts/load_data.py \
   --es-url http://localhost:9200
 ```
 
-**EOV metadata app export** (default input path is `data/eov-metadata-app-front-entries/jsonFiles`):
+**EOV metadata app export**
+
+Clone the [programme JSON export](https://github.com/iobis/eov-metadata-app-front-entries) under `data/` (gitignored except `data/eov_vocabulary.json`). The loader defaults to `data/eov-metadata-app-front-entries/jsonFiles/`.
+
+```bash
+git clone --depth 1 https://github.com/iobis/eov-metadata-app-front-entries.git \
+  data/eov-metadata-app-front-entries
+```
+
+To refresh an existing clone before loading:
+
+```bash
+git -C data/eov-metadata-app-front-entries pull --ff-only
+```
+
+Then load into the local Elasticsearch instance:
 
 ```bash
 python scripts/load_eov_metadata_data.py \
   --es-url http://localhost:9200
 ```
+
+To wipe and recreate the `project` and `project_grid` indices first, add `--clear-indexes`.
 
 - **Recreating indices before loading**
 

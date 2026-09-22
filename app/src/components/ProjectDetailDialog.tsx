@@ -27,14 +27,16 @@ interface ProjectDetailDialogProps {
   onClose: () => void
 }
 
-function identifierLabel(ident: {
-  url?: string
-  value?: string
-  description?: string
-}): string {
-  const parts = [ident.description?.trim(), ident.value?.trim()].filter(Boolean)
-  if (parts.length) return parts.join(' · ')
-  return ident.url?.trim() || 'Identifier'
+function identifierHref(ident: { url?: string; value?: string }): string | undefined {
+  const url = ident.url?.trim()
+  if (url) return url
+  const value = ident.value?.trim()
+  if (value && /^https?:\/\//i.test(value)) return value
+  return undefined
+}
+
+function identifierLabel(ident: { url?: string; value?: string }): string {
+  return identifierHref(ident) || ident.value?.trim() || 'Identifier'
 }
 
 export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogProps) {
@@ -113,12 +115,12 @@ export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogP
                   <span className="dialog-meta-label">Identifiers</span>
                   <ul className="dialog-eov-list">
                     {project.identifiers.map((ident, i) => {
+                      const href = identifierHref(ident)
                       const label = identifierLabel(ident)
-                      const href = ident.url?.trim()
                       return (
                         <li key={i}>
                           {href ? (
-                            <a href={href} target="_blank" rel="noopener noreferrer" className="dialog-link">
+                            <a href={href} target="_blank" rel="noopener noreferrer" className="dialog-link dialog-identifier-link">
                               {label}
                             </a>
                           ) : (

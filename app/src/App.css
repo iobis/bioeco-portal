@@ -1217,7 +1217,7 @@ a.project-card-link {
   gap: 6px;
   margin: 0 0 12px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 400;
   color: var(--accent);
   text-decoration: none;
 }
@@ -1310,7 +1310,7 @@ a.project-card-link {
 
 .dialog-link {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 400;
   color: var(--accent);
   text-decoration: none;
 }
@@ -1319,8 +1319,13 @@ a.project-card-link {
   text-decoration: underline;
 }
 
+.dialog-identifier-link {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .dialog-link-muted {
-  font-weight: 500;
+  font-weight: 400;
   color: var(--muted);
 }
 
