@@ -5,7 +5,7 @@ import { ProjectList } from './components/ProjectList'
 import { DatasetDialog } from './components/DatasetDialog'
 import { AboutPage } from './components/AboutPage'
 import { DataQualityPage } from './components/DataQualityPage'
-import { ProjectDetailDialog } from './components/ProjectDetailDialog'
+import { ProjectDetailDialog, type ObisProgrammeFilter } from './components/ProjectDetailDialog'
 import { ReadinessDashboard } from './components/ReadinessDashboard'
 import {
   parseUrlState,
@@ -68,6 +68,7 @@ export default function App() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initial.programme)
   const [selectedCellBbox, setSelectedCellBbox] = useState<string | null>(initial.bbox)
   const [datasetCellBbox, setDatasetCellBbox] = useState<string | null>(null)
+  const [obisProgrammeFilter, setObisProgrammeFilter] = useState<ObisProgrammeFilter | null>(null)
   const [searchQuery, setSearchQuery] = useState(initial.q)
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(initial.q)
   const [programmeStatus, setProgrammeStatus] = useState(initial.status)
@@ -125,7 +126,10 @@ export default function App() {
   ])
 
   useEffect(() => {
-    if (mapLayer !== 'data') setDatasetCellBbox(null)
+    if (mapLayer !== 'data') {
+      setDatasetCellBbox(null)
+      setObisProgrammeFilter(null)
+    }
   }, [mapLayer])
 
   useEffect(() => {
@@ -218,6 +222,8 @@ export default function App() {
             onShowGridLabelsChange={setShowGridLabels}
             globe={globe}
             onGlobeChange={setGlobe}
+            obisProgrammeFilter={obisProgrammeFilter}
+            onClearObisProgrammeFilter={() => setObisProgrammeFilter(null)}
           />
           <aside className="panel">
             <div className="panel-content">
@@ -239,12 +245,19 @@ export default function App() {
           <ProjectDetailDialog
             projectId={selectedProjectId}
             onClose={() => setSelectedProjectId(null)}
+            onShowObisData={(filter) => {
+              setObisProgrammeFilter(filter)
+              setMapLayer('data')
+              setSelectedProjectId(null)
+              setDatasetCellBbox(null)
+            }}
           />
           <DatasetDialog
             cellBbox={mapLayer === 'data' ? datasetCellBbox : null}
             onClose={() => setDatasetCellBbox(null)}
             eovCategories={selectedEovCategories}
             eovVocabulary={eovVocabulary}
+            programmeTags={obisProgrammeFilter?.tags ?? null}
           />
         </div>
       ) : (

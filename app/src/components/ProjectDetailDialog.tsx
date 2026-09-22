@@ -22,9 +22,15 @@ export interface ProjectDetail {
   readiness_coordination?: string
 }
 
+export interface ObisProgrammeFilter {
+  name: string
+  tags: string[]
+}
+
 interface ProjectDetailDialogProps {
   projectId: string | null
   onClose: () => void
+  onShowObisData?: (filter: ObisProgrammeFilter) => void
 }
 
 function identifierHref(ident: { url?: string; value?: string }): string | undefined {
@@ -39,7 +45,26 @@ function identifierLabel(ident: { url?: string; value?: string }): string {
   return identifierHref(ident) || ident.value?.trim() || 'Identifier'
 }
 
-export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogProps) {
+export function programmeObisFilter(project: ProjectDetail): ObisProgrammeFilter | null {
+  const tags: string[] = []
+  const seen = new Set<string>()
+  const add = (value?: string) => {
+    const tag = value?.trim()
+    if (!tag || seen.has(tag)) return
+    seen.add(tag)
+    tags.push(tag)
+  }
+  for (const ident of project.identifiers ?? []) {
+    add(ident.url)
+    const value = ident.value?.trim()
+    if (value && /^https?:\/\//i.test(value)) add(value)
+  }
+  add(project.id)
+  if (!tags.length || !project.name?.trim()) return null
+  return { name: project.name.trim(), tags }
+}
+
+export function ProjectDetailDialog({ projectId, onClose, onShowObisData }: ProjectDetailDialogProps) {
   const projectApiUrl = projectId ? `/api/projects/${projectId}?include_geometry=false` : null
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [loading, setLoading] = useState(false)
@@ -64,6 +89,8 @@ export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogP
   }, [projectId])
 
   if (projectId == null) return null
+
+  const obisFilter = project ? programmeObisFilter(project) : null
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onClose()
@@ -224,6 +251,18 @@ export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogP
                   <a href={project.uri} target="_blank" rel="noopener noreferrer" className="dialog-link dialog-link-muted">
                     JSON-LD
                   </a>
+                )}
+                {onShowObisData && obisFilter && (
+                  <button
+                    type="button"
+                    className="dialog-link dialog-link-muted dialog-link-button"
+                    onClick={() => {
+                      onShowObisData(obisFilter)
+                      onClose()
+                    }}
+                  >
+                    View OBIS data
+                  </button>
                 )}
               </p>
             </>

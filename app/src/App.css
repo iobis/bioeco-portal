@@ -745,11 +745,25 @@ a.project-card-link {
   overflow-y: auto;
 }
 
-.map-data-hint {
-  margin: 6px 0 0;
+.map-obis-programme-clear {
+  width: 100%;
+  padding: 8px 10px;
   font-size: 12px;
-  line-height: 1.35;
-  color: var(--muted);
+  font-family: inherit;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: normal;
+}
+
+.map-obis-programme-clear:hover {
+  border-color: #cbd5e1;
+  background: #e2e8f0;
 }
 
 .map-eov-toggle {
@@ -766,6 +780,15 @@ a.project-card-link {
   margin: 0;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+.map-eov-toggle.is-disabled,
+.map-eov-toggle.is-disabled input {
+  cursor: default;
+}
+
+.map-eov-toggle.is-disabled {
+  opacity: 0.5;
 }
 
 .map-eov-toggle span {
@@ -1317,6 +1340,15 @@ a.project-card-link {
 
 .dialog-link:hover {
   text-decoration: underline;
+}
+
+button.dialog-link-button {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .dialog-identifier-link {

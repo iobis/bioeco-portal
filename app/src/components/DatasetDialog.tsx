@@ -23,6 +23,7 @@ interface DatasetDialogProps {
   onClose: () => void
   eovCategories?: string[]
   eovVocabulary?: EovVocabulary | null
+  programmeTags?: string[] | null
 }
 
 function bboxStringToWkt(bbox: string): string | null {
@@ -60,6 +61,7 @@ export function DatasetDialog({
   onClose,
   eovCategories = [],
   eovVocabulary = null,
+  programmeTags = null,
 }: DatasetDialogProps) {
   const [data, setData] = useState<DatasetListResponse | null>(null)
   const [loading, setLoading] = useState(false)
@@ -89,10 +91,16 @@ export function DatasetDialog({
     const params = new URLSearchParams()
     params.set('geometry', geometry)
     params.set('size', '100')
-    const tags = eovTagUrls(eovVocabulary, eovCategories)
+    const tags = programmeTags?.length ? programmeTags : eovTagUrls(eovVocabulary, eovCategories)
     if (!tags.length) {
       setData(null)
-      setError(eovVocabulary ? 'No EOV tags available.' : 'EOV vocabulary still loading…')
+      setError(
+        programmeTags?.length
+          ? 'No programme tags available.'
+          : eovVocabulary
+            ? 'No EOV tags available.'
+            : 'EOV vocabulary still loading…',
+      )
       setLoading(false)
       return
     }
@@ -119,7 +127,7 @@ export function DatasetDialog({
       })
 
     return () => controller.abort()
-  }, [cellBbox, eovCategories, eovVocabulary])
+  }, [cellBbox, eovCategories, eovVocabulary, programmeTags])
 
   if (cellBbox == null) return null
 

@@ -2,6 +2,7 @@ import maplibregl, { type StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 import { eovTagUrls, type EovVocabulary } from '../eovVocabulary'
+import type { ObisProgrammeFilter } from './ProjectDetailDialog'
 import type { ProgrammeStatus } from '../programmeStatus'
 import { PROGRAMME_STATUS_OPTIONS } from '../programmeStatus'
 import type { ColorSchemeId, MapLayerMode } from '../urlState'
@@ -203,6 +204,8 @@ interface MapProps {
   onShowGridLabelsChange?: (show: boolean) => void
   globe?: boolean
   onGlobeChange?: (globe: boolean) => void
+  obisProgrammeFilter?: ObisProgrammeFilter | null
+  onClearObisProgrammeFilter?: () => void
 }
 
 export function Map({
@@ -226,6 +229,8 @@ export function Map({
   onShowGridLabelsChange,
   globe = false,
   onGlobeChange,
+  obisProgrammeFilter = null,
+  onClearObisProgrammeFilter,
 }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -696,7 +701,9 @@ export function Map({
 
     setProgrammeGridVisible(false)
 
-    const tags = eovTagUrls(eovVocabulary, selectedEovCategories)
+    const tags = obisProgrammeFilter?.tags.length
+      ? obisProgrammeFilter.tags
+      : eovTagUrls(eovVocabulary, selectedEovCategories)
     if (!tags.length) {
       removeObis()
       return
@@ -752,7 +759,7 @@ export function Map({
       },
       map.getLayer(CELL_HOVER_LAYER_ID) ? CELL_HOVER_LAYER_ID : undefined,
     )
-  }, [mapLayer, selectedEovCategories, eovVocabulary, mapReady])
+  }, [mapLayer, selectedEovCategories, eovVocabulary, mapReady, obisProgrammeFilter])
 
   useEffect(() => {
     const map = mapRef.current
@@ -911,6 +918,17 @@ export function Map({
             ))}
           </div>
         </div>
+        {isDataLayer && obisProgrammeFilter ? (
+          <div className="map-filter-section">
+            <button
+              type="button"
+              className="map-obis-programme-clear"
+              onClick={() => onClearObisProgrammeFilter?.()}
+            >
+              Showing datasets linked to {obisProgrammeFilter.name}, click to clear.
+            </button>
+          </div>
+        ) : null}
         {onEovCategoriesChange && eovVocabulary?.top_level_eovs?.length ? (
           <div className="map-filter-section">
             <span className="map-eov-widget-title">
@@ -921,19 +939,17 @@ export function Map({
                 .slice()
                 .sort((a, b) => a.label.localeCompare(b.label))
                 .map(({ code, label }) => (
-                <label key={code} className="map-eov-toggle">
+                <label key={code} className={`map-eov-toggle${isDataLayer && obisProgrammeFilter ? ' is-disabled' : ''}`}>
                   <input
                     type="checkbox"
                     checked={selectedEovCategories.includes(code)}
+                    disabled={Boolean(isDataLayer && obisProgrammeFilter)}
                     onChange={() => toggleEov(code)}
                   />
                   <span>{label}</span>
                 </label>
               ))}
             </div>
-            {isDataLayer && !selectedEovCategories.length ? (
-              <p className="map-data-hint">Showing all EOVs; select to filter OBIS occurrences.</p>
-            ) : null}
           </div>
         ) : null}
         {!isDataLayer && onReadinessChange ? (
