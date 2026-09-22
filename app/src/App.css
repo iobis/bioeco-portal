@@ -491,13 +491,23 @@
   color: var(--muted);
 }
 
-.list-meta {
-  padding-top: 8px;
-  padding-bottom: 8px;
-}
-
 .list-error {
   color: #b91c1c;
+}
+
+.list-sentinel {
+  min-height: 1px;
+}
+
+.list-retry {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .project-list {

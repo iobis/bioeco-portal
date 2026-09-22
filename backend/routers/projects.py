@@ -6,7 +6,14 @@ from elasticsearch.exceptions import NotFoundError
 
 from config import GRID_INDEX, PROJECT_INDEX
 from es_client import get_es_client
-from query_filters import normalize_status, parse_readiness_levels, readiness_filters, status_filters
+from query_filters import (
+    grid_text_search_query,
+    normalize_status,
+    parse_readiness_levels,
+    readiness_filters,
+    status_filters,
+    text_search_query,
+)
 
 router = APIRouter()
 
@@ -36,15 +43,9 @@ def _build_projects_query(
     must = []
     filters = []
 
-    if name and name.strip():
-        must.append({
-            "multi_match": {
-                "query": name.strip(),
-                "fields": ["name", "description"],
-                "type": "best_fields",
-                "fuzziness": "AUTO",
-            }
-        })
+    search = text_search_query(name)
+    if search:
+        must.append(search)
 
     if eov_category and eov_category.strip():
         categories = [c.strip().lower() for c in eov_category.split(",") if c.strip()]
@@ -114,15 +115,10 @@ def _build_grid_cell_query(
         filters.append({"range": {"end_year": {"gte": start_year}}})
     if end_year is not None:
         filters.append({"range": {"start_year": {"lte": end_year}}})
-    if name and name.strip():
-        filters.append({
-            "match": {
-                "project": {
-                    "query": name.strip(),
-                    "fuzziness": "AUTO",
-                }
-            }
-        })
+    must = []
+    search = grid_text_search_query(name)
+    if search:
+        must.append(search)
     filters.extend(status_filters(status))
     filters.extend(
         readiness_filters(
@@ -131,7 +127,10 @@ def _build_grid_cell_query(
             coordination=readiness_coordination,
         )
     )
-    return {"bool": {"filter": filters}}
+    bool_query: dict = {"filter": filters}
+    if must:
+        bool_query["must"] = must
+    return {"bool": bool_query}
 
 
 def _project_ids_for_cell(
@@ -180,7 +179,7 @@ def list_projects(
     eov: Optional[str] = Query(None, description="EOV code or URI"),
     eov_category: Optional[str] = Query(None, description="High-level EOV category (e.g. fish, coral); comma-separated for multiple"),
     subvariable: Optional[str] = Query(None, description="Subvariable (reserved for future use)"),
-    name: Optional[str] = Query(None, description="Free-text search on name and description"),
+    name: Optional[str] = Query(None, description="Free-text search on name and description (prefix and fuzzy)"),
     start_year: Optional[int] = Query(None, description="Filter projects active on or after this year"),
     end_year: Optional[int] = Query(None, description="Filter projects active on or before this year"),
     status: Optional[str] = Query(
@@ -222,12 +221,14 @@ def list_projects(
     try:
         if bbox and bbox.strip():
             try:
+                # Collect IDs by geography and non-text filters; name/description
+                # search is applied on project docs so description matches still work.
                 project_ids = _project_ids_for_cell(
                     es,
                     bbox.strip(),
                     eov=eov,
                     eov_category=eov_category,
-                    name=name,
+                    name=None,
                     start_year=start_year,
                     end_year=end_year,
                     status=status_norm,
@@ -239,7 +240,11 @@ def list_projects(
                 raise HTTPException(status_code=400, detail=f"Invalid bbox: {e}") from e
             if not project_ids:
                 return {"total": 0, "items": []}
-            query_body = {"query": {"ids": {"values": project_ids}}}
+            bool_query: dict = {"filter": [{"ids": {"values": project_ids}}]}
+            search = text_search_query(name)
+            if search:
+                bool_query["must"] = [search]
+            query_body = {"query": {"bool": bool_query}}
         else:
             query_body = _build_projects_query(
                 eov=eov,
@@ -253,11 +258,12 @@ def list_projects(
                 readiness_coordination=readiness_coordination_levels,
             )
 
+        searching = bool(name and name.strip())
         body = {
             **query_body,
             "from": from_,
             "size": size,
-            "sort": [{"name.keyword": "asc"}],
+            "sort": ["_score", {"name.keyword": "asc"}] if searching else [{"name.keyword": "asc"}],
         }
         if not include_geometry:
             body["_source"] = {"excludes": ["geometry"]}

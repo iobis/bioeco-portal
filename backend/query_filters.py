@@ -2,9 +2,65 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal, Optional, Sequence
 
 ProgrammeStatus = Literal["active", "inactive", "all"]
+
+_DEFAULT_TEXT_SEARCH_FIELDS = ("name^3", "description")
+_GRID_TEXT_SEARCH_FIELDS = ("project",)
+_PHRASE_PREFIX_MAX_EXPANSIONS = 50
+
+
+def _unboost_field(field: str) -> str:
+    return field.split("^", 1)[0]
+
+
+def text_search_query(
+    q: Optional[str],
+    *,
+    fields: Sequence[str] = _DEFAULT_TEXT_SEARCH_FIELDS,
+) -> Optional[dict]:
+    """Full-text query: fuzzy word match plus prefix on the last token.
+
+    Returns None when ``q`` is empty. Default fields target the project index
+    (boosted name + description); pass ``fields=("project",)`` for the grid index.
+    """
+    if not q or not q.strip():
+        return None
+    query = q.strip()
+    field_list = list(fields)
+    should: list[dict] = [
+        {
+            "multi_match": {
+                "query": query,
+                "fields": field_list,
+                "type": "best_fields",
+                "fuzziness": "AUTO",
+            }
+        }
+    ]
+    seen: set[str] = set()
+    for field in field_list:
+        base = _unboost_field(field)
+        if base in seen:
+            continue
+        seen.add(base)
+        should.append(
+            {
+                "match_phrase_prefix": {
+                    base: {
+                        "query": query,
+                        "max_expansions": _PHRASE_PREFIX_MAX_EXPANSIONS,
+                    }
+                }
+            }
+        )
+    return {"bool": {"should": should, "minimum_should_match": 1}}
+
+
+def grid_text_search_query(q: Optional[str]) -> Optional[dict]:
+    """Full-text query for the grid index ``project`` (programme name) field."""
+    return text_search_query(q, fields=_GRID_TEXT_SEARCH_FIELDS)
 
 
 def normalize_status(status: Optional[str]) -> ProgrammeStatus:

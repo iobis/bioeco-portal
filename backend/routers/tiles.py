@@ -7,7 +7,13 @@ from elasticsearch.exceptions import NotFoundError
 
 from config import GRID_INDEX
 from es_client import get_es_client
-from query_filters import normalize_status, parse_readiness_levels, readiness_filters, status_filters
+from query_filters import (
+    grid_text_search_query,
+    normalize_status,
+    parse_readiness_levels,
+    readiness_filters,
+    status_filters,
+)
 
 router = APIRouter()
 
@@ -34,15 +40,10 @@ def _build_mvt_query(
         filters.append({"range": {"end_year": {"gte": start_year}}})
     if end_year is not None:
         filters.append({"range": {"start_year": {"lte": end_year}}})
-    if name and name.strip():
-        filters.append({
-            "match": {
-                "project": {
-                    "query": name.strip(),
-                    "fuzziness": "AUTO",
-                }
-            }
-        })
+    must = []
+    search = grid_text_search_query(name)
+    if search:
+        must.append(search)
     filters.extend(status_filters(status))
     filters.extend(
         readiness_filters(
@@ -51,9 +52,14 @@ def _build_mvt_query(
             coordination=readiness_coordination,
         )
     )
-    if not filters:
+    if not must and not filters:
         return {"match_all": {}}
-    return {"bool": {"filter": filters}}
+    body: dict = {"bool": {}}
+    if must:
+        body["bool"]["must"] = must
+    if filters:
+        body["bool"]["filter"] = filters
+    return body
 
 
 @router.get("/projects/{z}/{x}/{y}.mvt")
@@ -64,7 +70,7 @@ def get_projects_tile(
     eov: Optional[str] = Query(None, description="EOV code to filter"),
     eov_category: Optional[str] = Query(None, description="High-level EOV category (e.g. fish, coral); comma-separated for multiple"),
     subvariable: Optional[str] = Query(None, description="Subvariable (reserved)"),
-    name: Optional[str] = Query(None, description="Filter by project name (full-text match, same as list)"),
+    name: Optional[str] = Query(None, description="Filter by programme name (prefix and fuzzy, same as list)"),
     start_year: Optional[int] = Query(None),
     end_year: Optional[int] = Query(None),
     status: Optional[str] = Query(
