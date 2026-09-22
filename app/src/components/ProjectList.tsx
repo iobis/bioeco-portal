@@ -43,6 +43,8 @@ interface ProjectListProps {
 }
 
 const PAGE_SIZE = 25
+/** Wait before loading map geometry so scrolling the list does not fire a fetch per row. */
+const HOVER_DELAY_MS = 400
 
 function appendProjectListParams(
   params: URLSearchParams,
@@ -105,14 +107,53 @@ export function ProjectList({
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const listRef = useRef<HTMLUListElement | null>(null)
   const requestIdRef = useRef(0)
   const loadingMoreRef = useRef(false)
   const itemsLengthRef = useRef(0)
   const totalRef = useRef(0)
+  const onHoverProjectRef = useRef(onHoverProject)
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pointerOverIdRef = useRef<string | null>(null)
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null)
   const resolveEov = useMemo(() => buildEovResolver(eovVocabulary), [eovVocabulary])
+
+  onHoverProjectRef.current = onHoverProject
 
   itemsLengthRef.current = items.length
   totalRef.current = total
+
+  const clearHoverTimer = () => {
+    if (hoverTimerRef.current != null) {
+      clearTimeout(hoverTimerRef.current)
+      hoverTimerRef.current = null
+    }
+  }
+
+  const scheduleHover = (id: string | null) => {
+    clearHoverTimer()
+    if (!id) {
+      onHoverProjectRef.current?.(null)
+      return
+    }
+    hoverTimerRef.current = setTimeout(() => {
+      hoverTimerRef.current = null
+      onHoverProjectRef.current?.(id)
+    }, HOVER_DELAY_MS)
+  }
+  const scheduleHoverRef = useRef(scheduleHover)
+  scheduleHoverRef.current = scheduleHover
+
+  const handleItemMouseEnter = (id: string) => {
+    pointerOverIdRef.current = id
+    scheduleHover(id)
+  }
+
+  const handleItemMouseLeave = (id: string) => {
+    if (pointerOverIdRef.current !== id) return
+    pointerOverIdRef.current = null
+    scheduleHover(null)
+  }
 
   const listParams = useMemo(() => {
     const params = new URLSearchParams({ size: String(PAGE_SIZE) })
@@ -125,6 +166,51 @@ export function ProjectList({
     })
     return params.toString()
   }, [debouncedSearchQuery, cellBbox, eovCategories, programmeStatus, readiness])
+
+  useEffect(() => {
+    pointerOverIdRef.current = null
+    clearHoverTimer()
+    onHoverProjectRef.current?.(null)
+  }, [listParams])
+
+  useEffect(() => {
+    return () => {
+      clearHoverTimer()
+      onHoverProjectRef.current?.(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    const list = listRef.current
+    const root = list?.closest('.panel-content')
+    if (!root) return
+
+    const projectIdFromPoint = (x: number, y: number) => {
+      const el = document.elementFromPoint(x, y)
+      const item = el?.closest<HTMLElement>('.project-item')
+      if (!item || !root.contains(item)) return null
+      return item.dataset.projectId ?? null
+    }
+
+    const onPointerMove = (e: PointerEvent) => {
+      lastPointerRef.current = { x: e.clientX, y: e.clientY }
+    }
+
+    const onScroll = () => {
+      const pos = lastPointerRef.current
+      const id = pos ? projectIdFromPoint(pos.x, pos.y) : pointerOverIdRef.current
+      pointerOverIdRef.current = id
+      onHoverProjectRef.current?.(null)
+      scheduleHoverRef.current(id)
+    }
+
+    root.addEventListener('pointermove', onPointerMove, { passive: true })
+    root.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      root.removeEventListener('pointermove', onPointerMove)
+      root.removeEventListener('scroll', onScroll)
+    }
+  }, [items.length])
 
   const fetchPage = useCallback(async (from: number, signal?: AbortSignal): Promise<ProjectsResponse> => {
     const params = new URLSearchParams(listParams)
@@ -238,13 +324,14 @@ export function ProjectList({
       )}
       {items.length > 0 && (
         <>
-          <ul className="project-list">
+          <ul ref={listRef} className="project-list">
             {items.map((p) => (
               <li
                 key={p.id}
                 className="project-item"
-                onMouseEnter={() => onHoverProject?.(p.id)}
-                onMouseLeave={() => onHoverProject?.(null)}
+                data-project-id={p.id}
+                onMouseEnter={() => handleItemMouseEnter(p.id)}
+                onMouseLeave={() => handleItemMouseLeave(p.id)}
               >
                 <button
                   type="button"

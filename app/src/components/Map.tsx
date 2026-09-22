@@ -501,14 +501,15 @@ export function Map({
     }
 
     const idForFetch = hoveredProjectId
-    fetch(`/api/projects/${hoveredProjectId}?include_geometry=true`)
+    const controller = new AbortController()
+    fetch(`/api/projects/${hoveredProjectId}?include_geometry=true`, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((project) => {
-        if (!mapRef.current || !project?.geometry || hoveredIdRef.current !== idForFetch) {
-          removeHighlight()
+        if (controller.signal.aborted || !mapRef.current || hoveredIdRef.current !== idForFetch) {
           return
         }
         removeHighlight()
+        if (!project?.geometry) return
         const geometry = project.geometry as GeoJSON.Geometry
         const geoJson: GeoJSON.Feature = {
           type: 'Feature',
@@ -566,9 +567,15 @@ export function Map({
           )
         }
       })
-      .catch(() => removeHighlight())
+      .catch((err: unknown) => {
+        if (err instanceof Error && err.name === 'AbortError') return
+        if (hoveredIdRef.current === idForFetch) removeHighlight()
+      })
 
-    return removeHighlight
+    return () => {
+      controller.abort()
+      removeHighlight()
+    }
   }, [hoveredProjectId])
 
   useEffect(() => {
