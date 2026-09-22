@@ -182,7 +182,7 @@ export function ProjectList({
 
   useEffect(() => {
     const list = listRef.current
-    const root = list?.closest('.panel-content')
+    const root = list?.closest<HTMLElement>('.panel-content')
     if (!root) return
 
     const projectIdFromPoint = (x: number, y: number) => {
