@@ -907,6 +907,33 @@ a.project-card-link {
   padding-bottom: 8px;
 }
 
+.dialog-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.dialog-section-head .dialog-meta-label {
+  margin-bottom: 0;
+}
+
+.dialog-obis-view-btn {
+  flex-shrink: 0;
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.25;
+  cursor: pointer;
+}
+
 .dialog-dataset-list {
   list-style: none;
   margin: 0;
@@ -940,6 +967,10 @@ a.project-card-link {
   color: var(--accent);
   line-height: 1.35;
   overflow-wrap: break-word;
+}
+
+.dialog-box:not(.dialog-box--datasets) .dialog-dataset-title {
+  font-weight: 400;
 }
 
 .dialog-dataset-meta {
@@ -1274,21 +1305,22 @@ a.project-card-link {
 }
 
 .dialog-meta {
-  margin: 0 0 12px;
+  margin: 0 0 16px;
 }
 
 .dialog-section {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .dialog-meta-label {
   display: block;
   font-family: Inter, system-ui, -apple-system, sans-serif;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  margin-bottom: 4px;
+  color: #334155;
+  margin-bottom: 6px;
 }
 
 .dialog-readiness {
@@ -1340,15 +1372,6 @@ a.project-card-link {
 
 .dialog-link:hover {
   text-decoration: underline;
-}
-
-button.dialog-link-button {
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  font-family: inherit;
-  cursor: pointer;
 }
 
 .dialog-identifier-link {

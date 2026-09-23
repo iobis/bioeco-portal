@@ -45,6 +45,43 @@ function identifierLabel(ident: { url?: string; value?: string }): string {
   return identifierHref(ident) || ident.value?.trim() || 'Identifier'
 }
 
+const OBIS_DATASET_API = 'https://api.obis.org/dataset'
+const OBIS_DATASET_PAGE = 'https://obis.org/dataset'
+const OBIS_DATASET_LIMIT = 10
+
+interface ObisDatasetHit {
+  id: string
+  title?: string
+  records?: number
+}
+
+interface ObisDatasetList {
+  total: number
+  results: ObisDatasetHit[]
+}
+
+/** HTTP(S) identifier values OBIS can match as dataset tags. */
+export function identifierTags(project: ProjectDetail): string[] {
+  const tags: string[] = []
+  const seen = new Set<string>()
+  const add = (value?: string) => {
+    const tag = value?.trim()
+    if (!tag || !/^https?:\/\//i.test(tag) || seen.has(tag)) return
+    seen.add(tag)
+    tags.push(tag)
+  }
+  for (const ident of project.identifiers ?? []) {
+    add(ident.url)
+    add(ident.value)
+  }
+  return tags
+}
+
+function formatRecords(n: number | undefined): string | null {
+  if (n == null || Number.isNaN(n)) return null
+  return n.toLocaleString()
+}
+
 export function programmeObisFilter(project: ProjectDetail): ObisProgrammeFilter | null {
   const tags: string[] = []
   const seen = new Set<string>()
@@ -69,6 +106,9 @@ export function ProjectDetailDialog({ projectId, onClose, onShowObisData }: Proj
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [datasets, setDatasets] = useState<ObisDatasetList | null>(null)
+  const [datasetsLoading, setDatasetsLoading] = useState(false)
+  const [datasetsError, setDatasetsError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!projectId) {
@@ -88,9 +128,52 @@ export function ProjectDetailDialog({ projectId, onClose, onShowObisData }: Proj
       .finally(() => setLoading(false))
   }, [projectId])
 
+  const tagsKey = project ? identifierTags(project).join('\n') : ''
+
+  useEffect(() => {
+    if (!tagsKey) {
+      setDatasets(null)
+      setDatasetsError(null)
+      setDatasetsLoading(false)
+      return
+    }
+
+    const controller = new AbortController()
+    setDatasetsLoading(true)
+    setDatasetsError(null)
+    setDatasets(null)
+
+    const params = new URLSearchParams()
+    params.set('tags', tagsKey.split('\n').join(','))
+    params.set('size', String(OBIS_DATASET_LIMIT))
+
+    fetch(`${OBIS_DATASET_API}?${params}`, { signal: controller.signal })
+      .then((r) => {
+        if (!r.ok) throw new Error(r.statusText || `HTTP ${r.status}`)
+        return r.json()
+      })
+      .then((json: ObisDatasetList) => {
+        setDatasets({
+          total: json.total ?? 0,
+          results: Array.isArray(json.results) ? json.results.slice(0, OBIS_DATASET_LIMIT) : [],
+        })
+      })
+      .catch((e: unknown) => {
+        if (e instanceof DOMException && e.name === 'AbortError') return
+        setDatasetsError(e instanceof Error ? e.message : 'Failed to load OBIS datasets')
+        setDatasets(null)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setDatasetsLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [tagsKey])
+
   if (projectId == null) return null
 
   const obisFilter = project ? programmeObisFilter(project) : null
+  const hasIdentifierTags = Boolean(tagsKey)
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onClose()
@@ -243,6 +326,60 @@ export function ProjectDetailDialog({ projectId, onClose, onShowObisData }: Proj
                   </ul>
                 </div>
               ) : null}
+              {hasIdentifierTags && (
+                <div className="dialog-section">
+                  <div className="dialog-section-head">
+                    <span className="dialog-meta-label">OBIS datasets</span>
+                    {onShowObisData && obisFilter && (
+                      <button
+                        type="button"
+                        className="dialog-obis-view-btn"
+                        onClick={() => {
+                          onShowObisData(obisFilter)
+                          onClose()
+                        }}
+                      >
+                        View OBIS data
+                      </button>
+                    )}
+                  </div>
+                  {datasetsLoading && <p className="dialog-message">Loading OBIS datasets…</p>}
+                  {datasetsError && <p className="dialog-message dialog-error">{datasetsError}</p>}
+                  {!datasetsLoading && !datasetsError && datasets && (
+                    <p className="dialog-message dialog-list-summary">
+                      {datasets.total === 0
+                        ? 'No OBIS datasets found for these identifiers.'
+                        : `${datasets.total.toLocaleString()} dataset${datasets.total === 1 ? '' : 's'}${
+                            datasets.results.length < datasets.total
+                              ? ` (showing ${datasets.results.length})`
+                              : ''
+                          }`}
+                    </p>
+                  )}
+                  {!datasetsLoading && !datasetsError && datasets?.results.length ? (
+                    <ul className="dialog-dataset-list">
+                      {datasets.results.map((d) => {
+                        const records = formatRecords(d.records)
+                        return (
+                          <li key={d.id} className="dialog-dataset-item">
+                            <a
+                              className="dialog-dataset-link"
+                              href={`${OBIS_DATASET_PAGE}/${d.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <span className="dialog-dataset-title">{d.title?.trim() || d.id}</span>
+                              {records ? (
+                                <span className="dialog-dataset-meta">{records} records in OBIS</span>
+                              ) : null}
+                            </a>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  ) : null}
+                </div>
+              )}
               <p className="dialog-actions">
                 <a href={projectApiUrl ?? '#'} target="_blank" rel="noopener noreferrer" className="dialog-link dialog-link-muted">
                   API record
@@ -251,18 +388,6 @@ export function ProjectDetailDialog({ projectId, onClose, onShowObisData }: Proj
                   <a href={project.uri} target="_blank" rel="noopener noreferrer" className="dialog-link dialog-link-muted">
                     JSON-LD
                   </a>
-                )}
-                {onShowObisData && obisFilter && (
-                  <button
-                    type="button"
-                    className="dialog-link dialog-link-muted dialog-link-button"
-                    onClick={() => {
-                      onShowObisData(obisFilter)
-                      onClose()
-                    }}
-                  >
-                    View OBIS data
-                  </button>
                 )}
               </p>
             </>
