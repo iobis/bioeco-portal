@@ -53,6 +53,8 @@ interface ObisDatasetHit {
   id: string
   title?: string
   records?: number
+  archive?: string
+  abstract?: string
 }
 
 interface ObisDatasetList {
@@ -80,6 +82,16 @@ export function identifierTags(project: ProjectDetail): string[] {
 function formatRecords(n: number | undefined): string | null {
   if (n == null || Number.isNaN(n)) return null
   return n.toLocaleString()
+}
+
+function archiveHref(value: string | undefined): string | undefined {
+  const url = value?.trim()
+  if (!url || !/^https?:\/\//i.test(url)) return undefined
+  return url
+}
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 export function programmeObisFilter(project: ProjectDetail): ObisProgrammeFilter | null {
@@ -360,6 +372,8 @@ export function ProjectDetailDialog({ projectId, onClose, onShowObisData }: Proj
                     <ul className="dialog-dataset-list">
                       {datasets.results.map((d) => {
                         const records = formatRecords(d.records)
+                        const archive = archiveHref(d.archive)
+                        const blurb = d.abstract ? stripHtml(d.abstract) : ''
                         return (
                           <li key={d.id} className="dialog-dataset-item">
                             <a
@@ -369,10 +383,37 @@ export function ProjectDetailDialog({ projectId, onClose, onShowObisData }: Proj
                               rel="noopener noreferrer"
                             >
                               <span className="dialog-dataset-title">{d.title?.trim() || d.id}</span>
-                              {records ? (
-                                <span className="dialog-dataset-meta">{records} records in OBIS</span>
-                              ) : null}
                             </a>
+                            {records || archive ? (
+                              <div className="dialog-dataset-meta-row">
+                                {records ? (
+                                  <span className="dialog-dataset-meta">{records} records in OBIS</span>
+                                ) : null}
+                                {archive ? (
+                                  <a
+                                    className="dialog-archive-pill"
+                                    href={archive}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    Download
+                                  </a>
+                                ) : null}
+                              </div>
+                            ) : null}
+                            {blurb ? (
+                              <a
+                                className="dialog-dataset-link dialog-dataset-extra"
+                                href={`${OBIS_DATASET_PAGE}/${d.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <span className="dialog-dataset-blurb">
+                                  {blurb.slice(0, 140)}
+                                  {blurb.length > 140 ? '…' : ''}
+                                </span>
+                              </a>
+                            ) : null}
                           </li>
                         )
                       })}

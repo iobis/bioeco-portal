@@ -11,6 +11,7 @@ interface ObisDataset {
   url?: string
   abstract?: string
   tags?: string[]
+  archive?: string
 }
 
 interface DatasetListResponse {
@@ -36,6 +37,12 @@ function bboxStringToWkt(bbox: string): string | null {
 function formatRecords(n: number | undefined): string | null {
   if (n == null || Number.isNaN(n)) return null
   return n.toLocaleString()
+}
+
+function archiveHref(value: string | undefined): string | undefined {
+  const url = value?.trim()
+  if (!url || !/^https?:\/\//i.test(url)) return undefined
+  return url
 }
 
 function stripHtml(html: string): string {
@@ -169,6 +176,7 @@ export function DatasetDialog({
               {data.results.map((d) => {
                 const href = `${OBIS_DATASET_PAGE}/${d.id}`
                 const records = formatRecords(d.records)
+                const archive = archiveHref(d.archive)
                 const blurb = d.abstract ? stripHtml(d.abstract) : ''
                 const eovs = eovsFromTags(d.tags, resolveEov)
                 return (
@@ -180,30 +188,53 @@ export function DatasetDialog({
                       rel="noopener noreferrer"
                     >
                       <span className="dialog-dataset-title">{d.title?.trim() || d.id}</span>
-                      {records ? (
-                        <span className="dialog-dataset-meta">{records} records in OBIS</span>
-                      ) : null}
-                      {blurb ? (
-                        <span className="dialog-dataset-blurb">
-                          {blurb.slice(0, 140)}
-                          {blurb.length > 140 ? '…' : ''}
-                        </span>
-                      ) : null}
-                      {eovs.length ? (
-                        <div className="project-eov-badges dialog-dataset-eovs">
-                          {eovs.map(({ key, label, bg }) => (
-                            <span key={key} className="dialog-dataset-eov" title={label}>
-                              <span
-                                className="project-eov-bubble"
-                                style={{ backgroundColor: bg }}
-                                aria-hidden
-                              />
-                              <span className="dialog-dataset-eov-label">{label}</span>
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
                     </a>
+                    {records || archive ? (
+                      <div className="dialog-dataset-meta-row">
+                        {records ? (
+                          <span className="dialog-dataset-meta">{records} records in OBIS</span>
+                        ) : null}
+                        {archive ? (
+                          <a
+                            className="dialog-archive-pill"
+                            href={archive}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            Download
+                          </a>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {blurb || eovs.length ? (
+                      <a
+                        className="dialog-dataset-link dialog-dataset-extra"
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {blurb ? (
+                          <span className="dialog-dataset-blurb">
+                            {blurb.slice(0, 140)}
+                            {blurb.length > 140 ? '…' : ''}
+                          </span>
+                        ) : null}
+                        {eovs.length ? (
+                          <div className="project-eov-badges dialog-dataset-eovs">
+                            {eovs.map(({ key, label, bg }) => (
+                              <span key={key} className="dialog-dataset-eov" title={label}>
+                                <span
+                                  className="project-eov-bubble"
+                                  style={{ backgroundColor: bg }}
+                                  aria-hidden
+                                />
+                                <span className="dialog-dataset-eov-label">{label}</span>
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </a>
+                    ) : null}
                   </li>
                 )
               })}
