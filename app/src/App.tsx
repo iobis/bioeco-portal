@@ -245,6 +245,7 @@ export default function App() {
           <ProjectDetailDialog
             projectId={selectedProjectId}
             onClose={() => setSelectedProjectId(null)}
+            eovVocabulary={eovVocabulary}
             onShowObisData={(filter) => {
               setObisProgrammeFilter(filter)
               setMapLayer('data')

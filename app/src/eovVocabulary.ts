@@ -87,6 +87,78 @@ export function getFallbackBadge(index: number): EovBadge {
   return FALLBACK_PALETTE[index % FALLBACK_PALETTE.length]
 }
 
+/** Path segments after `/eov/` (empty if URI is not a goosocean-style EOV URL). */
+function eovPathSegments(uri: string): string[] | null {
+  const marker = '/eov/'
+  const idx = uri.indexOf(marker)
+  if (idx < 0) return null
+  const rest = uri.slice(idx + marker.length).replace(/\/+$/, '')
+  if (!rest) return null
+  return rest.split('/').filter(Boolean)
+}
+
+/**
+ * Split programme EOV entries into top-level EOVs vs subvariables.
+ *
+ * Prefer vocabulary exact matches when available; otherwise use URI path depth
+ * (`/eov/{slug}` vs `/eov/{slug}/…`), which covers subvariables missing from the
+ * vocab file (e.g. phytoplankton/abundance).
+ */
+export function partitionEovs<T extends { uri?: string; code?: string; label?: string }>(
+  eovs: T[],
+  vocab: EovVocabulary | null = null,
+): { topLevel: T[]; subvariables: T[] } {
+  const topUrls = new Set<string>()
+  const subUrls = new Set<string>()
+  if (vocab) {
+    for (const t of vocab.top_level_eovs ?? []) {
+      if (t.url?.trim()) topUrls.add(t.url.trim())
+      for (const alt of t.alt_uris ?? []) {
+        if (alt?.trim()) topUrls.add(alt.trim())
+      }
+    }
+    for (const s of vocab.subvariables ?? []) {
+      if (s.url?.trim()) subUrls.add(s.url.trim())
+      for (const alt of s.alt_uris ?? []) {
+        if (alt?.trim()) subUrls.add(alt.trim())
+      }
+    }
+  }
+
+  const topLevel: T[] = []
+  const subvariables: T[] = []
+  const seen = new Set<string>()
+
+  for (const eov of eovs) {
+    const uri = (eov.uri ?? '').trim()
+    const key = uri || `${eov.code ?? ''}|${eov.label ?? ''}`
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+
+    if (uri && subUrls.has(uri)) {
+      subvariables.push(eov)
+      continue
+    }
+    if (uri && topUrls.has(uri)) {
+      topLevel.push(eov)
+      continue
+    }
+    if (uri && [...topUrls].some((top) => uri.startsWith(top.replace(/\/+$/, '') + '/'))) {
+      subvariables.push(eov)
+      continue
+    }
+
+    const segments = uri ? eovPathSegments(uri) : null
+    if (segments && segments.length >= 2) {
+      subvariables.push(eov)
+    } else {
+      topLevel.push(eov)
+    }
+  }
+
+  return { topLevel, subvariables }
+}
+
 /** Resolve EOV codes to canonical URLs for OBIS `tags=` filters.
  *  Empty selection → all top-level EOVs (BioEco scope by default).
  */

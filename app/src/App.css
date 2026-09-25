@@ -1030,6 +1030,17 @@ a.project-card-link {
   margin-top: 6px;
 }
 
+.dialog-eov-chips {
+  margin-top: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.dialog-eov-chips .project-eov-bubble::after {
+  content: none;
+}
+
 .dialog-dataset-eov {
   display: inline-flex;
   align-items: center;

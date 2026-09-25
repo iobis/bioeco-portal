@@ -1,4 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  buildEovResolver,
+  getFallbackBadge,
+  partitionEovs,
+  type EovVocabulary,
+} from '../eovVocabulary'
 
 export interface ProjectDetail {
   id?: string
@@ -32,6 +38,7 @@ interface ProjectDetailDialogProps {
   projectId: string | null
   onClose: () => void
   onShowObisData?: (filter: ObisProgrammeFilter) => void
+  eovVocabulary?: EovVocabulary | null
 }
 
 function identifierHref(ident: { url?: string; value?: string }): string | undefined {
@@ -114,7 +121,7 @@ export function programmeObisFilter(project: ProjectDetail): ObisProgrammeFilter
   return { name: project.name.trim(), tags }
 }
 
-export function ProjectDetailDialog({ projectId, onClose, onShowObisData }: ProjectDetailDialogProps) {
+export function ProjectDetailDialog({ projectId, onClose, onShowObisData, eovVocabulary = null }: ProjectDetailDialogProps) {
   const projectApiUrl = projectId ? `/api/projects/${projectId}?include_geometry=false` : null
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [loading, setLoading] = useState(false)
@@ -122,6 +129,19 @@ export function ProjectDetailDialog({ projectId, onClose, onShowObisData }: Proj
   const [datasets, setDatasets] = useState<ObisDatasetList | null>(null)
   const [datasetsLoading, setDatasetsLoading] = useState(false)
   const [datasetsError, setDatasetsError] = useState<string | null>(null)
+  const resolveEov = useMemo(() => buildEovResolver(eovVocabulary), [eovVocabulary])
+
+  function eovChip(
+    eov: { uri?: string; code?: string; label?: string },
+    index: number,
+  ): { key: string; label: string; bg: string } {
+    const resolved = eov.uri ? resolveEov(eov.uri) : null
+    return {
+      key: eov.uri ?? eov.code ?? String(index),
+      label: eov.label ?? resolved?.label ?? eov.code ?? eov.uri ?? '—',
+      bg: resolved?.badge.bg ?? getFallbackBadge(index).bg,
+    }
+  }
 
   useEffect(() => {
     if (!projectId) {
@@ -187,6 +207,10 @@ export function ProjectDetailDialog({ projectId, onClose, onShowObisData }: Proj
 
   const obisFilter = project ? programmeObisFilter(project) : null
   const hasIdentifierTags = Boolean(tagsKey)
+  const { topLevel: topLevelEovs, subvariables: subvariableEovs } = partitionEovs(
+    project?.eovs ?? [],
+    eovVocabulary,
+  )
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onClose()
@@ -230,7 +254,7 @@ export function ProjectDetailDialog({ projectId, onClose, onShowObisData }: Proj
               {(project.start_year != null || project.end_year != null) && (
                 <p className="dialog-meta">
                   <span className="dialog-meta-label">Period</span>{' '}
-                  {project.start_year ?? '?'} – {project.end_year ?? '?'}
+                  {project.start_year ?? '?'} – {project.end_year ?? 'present'}
                 </p>
               )}
               {project.identifiers?.length ? (
@@ -280,14 +304,36 @@ export function ProjectDetailDialog({ projectId, onClose, onShowObisData }: Proj
                   </div>
                 </div>
               )}
-              {project.eovs?.length ? (
+              {topLevelEovs.length ? (
                 <div className="dialog-section">
                   <span className="dialog-meta-label">EOVs</span>
-                  <ul className="dialog-eov-list">
-                    {project.eovs.map((eov, i) => (
-                      <li key={i}>{eov.label ?? eov.code ?? eov.uri ?? '—'}</li>
-                    ))}
-                  </ul>
+                  <div className="project-eov-badges dialog-eov-chips">
+                    {topLevelEovs.map((eov, i) => {
+                      const { key, label, bg } = eovChip(eov, i)
+                      return (
+                        <span key={key} className="dialog-dataset-eov">
+                          <span className="project-eov-bubble" style={{ backgroundColor: bg }} aria-hidden />
+                          <span className="dialog-dataset-eov-label">{label}</span>
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null}
+              {subvariableEovs.length ? (
+                <div className="dialog-section">
+                  <span className="dialog-meta-label">Subvariables</span>
+                  <div className="project-eov-badges dialog-eov-chips">
+                    {subvariableEovs.map((eov, i) => {
+                      const { key, label, bg } = eovChip(eov, i)
+                      return (
+                        <span key={key} className="dialog-dataset-eov">
+                          <span className="project-eov-bubble" style={{ backgroundColor: bg }} aria-hidden />
+                          <span className="dialog-dataset-eov-label">{label}</span>
+                        </span>
+                      )
+                    })}
+                  </div>
                 </div>
               ) : null}
               {project.publishing_principles?.length ? (
