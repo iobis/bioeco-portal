@@ -35,6 +35,7 @@ from util import (
     index_project_bindings,
     log_colored,
     log_index_summary,
+    normalize_contact,
     resolve_eov_uri,
     save_import_run,
 )
@@ -72,35 +73,25 @@ def _extract_contacts(node: dict, source: str, issue_logger: ImportIssueLogger) 
     for c in as_list(get_schema(node, "contactPoint")):
         if not isinstance(c, dict):
             continue
-        name_c = get_schema(c, "name")
-        email_c = get_schema(c, "email")
-        url_c = get_schema(c, "url")
-        type_c = get_schema(c, "contactType")
-        if not (name_c or email_c or url_c):
-            continue
-        contacts.append(
-            {
-                "name": str(name_c).strip() if name_c else "",
-                "email": str(email_c).strip() if email_c else "",
-                "url": str(url_c).strip() if url_c else "",
-                "contact_type": str(type_c).strip() if type_c else "",
-            }
+        contact = normalize_contact(
+            name=get_schema(c, "name"),
+            email=get_schema(c, "email"),
+            url=get_schema(c, "url"),
+            contact_type=get_schema(c, "contactType"),
         )
+        if contact:
+            contacts.append(contact)
 
     parent = get_schema(node, "parentOrganization")
     if isinstance(parent, dict):
-        org_name = get_schema(parent, "legalName") or get_schema(parent, "name")
-        org_url = get_schema(parent, "url")
-        org_email = get_schema(parent, "email")
-        if org_name or org_url or org_email:
-            contacts.append(
-                {
-                    "name": str(org_name).strip() if org_name else "",
-                    "email": str(org_email).strip() if org_email else "",
-                    "url": str(org_url).strip() if org_url else "",
-                    "contact_type": "Organization",
-                }
-            )
+        contact = normalize_contact(
+            name=get_schema(parent, "legalName") or get_schema(parent, "name"),
+            email=get_schema(parent, "email"),
+            url=get_schema(parent, "url"),
+            contact_type="Organization",
+        )
+        if contact:
+            contacts.append(contact)
 
     if not contacts:
         issue_logger.record(

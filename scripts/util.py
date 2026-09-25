@@ -472,6 +472,56 @@ def extract_publishing_principles(node: dict) -> list[dict]:
     return principles
 
 
+_CONTACT_PLACEHOLDER_NAMES = frozenset(
+    {
+        "contact email",
+        "email",
+        "contact",
+        "n/a",
+        "na",
+        "none",
+    }
+)
+
+
+def _is_http_url(value: str) -> bool:
+    return value.startswith("http://") or value.startswith("https://")
+
+
+def normalize_contact(
+    name: str | None = None,
+    email: str | None = None,
+    url: str | None = None,
+    contact_type: str | None = None,
+) -> dict | None:
+    """
+    Build a contact dict, cleaning metadata-app quirks:
+    - placeholder names like "Contact email"
+    - ROR / other URLs stuffed into name or legalName
+    """
+    name_s = str(name).strip() if name else ""
+    email_s = str(email).strip() if email else ""
+    url_s = str(url).strip() if url else ""
+    type_s = str(contact_type).strip() if contact_type else ""
+
+    if name_s.lower() in _CONTACT_PLACEHOLDER_NAMES:
+        name_s = ""
+
+    if _is_http_url(name_s):
+        if not url_s:
+            url_s = name_s
+        name_s = ""
+
+    if not (name_s or email_s or url_s):
+        return None
+    return {
+        "name": name_s,
+        "email": email_s,
+        "url": url_s,
+        "contact_type": type_s,
+    }
+
+
 def _shift_geom_longitude(geom, to_360: bool):
     """Shift longitudes between [-180,180] and [0,360] domains."""
     if to_360:

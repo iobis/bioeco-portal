@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 export interface ProjectDetail {
   id?: string
@@ -314,27 +314,28 @@ export function ProjectDetailDialog({ projectId, onClose, onShowObisData }: Proj
                   <span className="dialog-meta-label">Contacts</span>
                   <ul className="dialog-eov-list">
                     {project.contacts.map((c, i) => {
-                      const parts: string[] = []
-                      if (c.name) parts.push(c.name)
+                      const label = c.name?.trim() || c.contact_type?.trim() || ''
+                      const email = c.email?.trim() || ''
+                      const href = c.url?.trim() || ''
+                      const bits: ReactNode[] = []
+                      if (label) bits.push(label)
+                      if (email) bits.push(email)
+                      if (href) {
+                        bits.push(
+                          <a key="url" href={href} target="_blank" rel="noopener noreferrer" className="dialog-link">
+                            {href}
+                          </a>,
+                        )
+                      }
+                      if (!bits.length) return null
                       return (
                         <li key={i}>
-                          {parts.join(' – ')}
-                          {c.email && (
-                            <>
-                              {' – '}
-                              <a href={`mailto:${c.email}`} className="dialog-link dialog-link-muted">
-                                {c.email}
-                              </a>
-                            </>
-                          )}
-                          {c.url && (
-                            <>
-                              {' – '}
-                              <a href={c.url} target="_blank" rel="noopener noreferrer" className="dialog-link dialog-link-muted">
-                                Link
-                              </a>
-                            </>
-                          )}
+                          {bits.map((bit, j) => (
+                            <span key={j}>
+                              {j > 0 ? ' – ' : null}
+                              {bit}
+                            </span>
+                          ))}
                         </li>
                       )
                     })}

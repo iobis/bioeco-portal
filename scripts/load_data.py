@@ -21,6 +21,7 @@ from util import (
     index_project_bindings,
     log_colored,
     log_index_summary,
+    normalize_contact,
     resolve_eov_uri,
     save_import_run,
 )
@@ -230,20 +231,14 @@ def build_bindings_from_jsonld_graph(graph):
         for c in contact_entries:
             if not isinstance(c, dict):
                 continue
-            name_c = get_schema(c, "name")
-            email_c = get_schema(c, "email")
-            url_c = get_schema(c, "url")
-            type_c = get_schema(c, "contactType")
-            if not (name_c or email_c or url_c):
-                continue
-            contacts.append(
-                {
-                    "name": str(name_c).strip() if name_c else "",
-                    "email": str(email_c).strip() if email_c else "",
-                    "url": str(url_c).strip() if url_c else "",
-                    "contact_type": str(type_c).strip() if type_c else "",
-                }
+            contact = normalize_contact(
+                name=get_schema(c, "name"),
+                email=get_schema(c, "email"),
+                url=get_schema(c, "url"),
+                contact_type=get_schema(c, "contactType"),
             )
+            if contact:
+                contacts.append(contact)
         if contacts:
             # Store as JSON string in the intermediate binding; converted to objects later.
             b["contacts"] = {"value": json.dumps(contacts)}
