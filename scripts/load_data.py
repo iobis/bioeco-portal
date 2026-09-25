@@ -15,6 +15,7 @@ from util import (
     create_es_client,
     ensure_indices,
     extract_identifiers,
+    extract_publishing_principles,
     extract_wkt,
     get_schema,
     index_project_bindings,
@@ -126,6 +127,10 @@ def build_bindings_from_jsonld_graph(graph):
         identifiers = extract_identifiers(node)
         if identifiers:
             b["identifiers"] = {"value": json.dumps(identifiers)}
+
+        publishing_principles = extract_publishing_principles(node)
+        if publishing_principles:
+            b["publishing_principles"] = {"value": json.dumps(publishing_principles)}
 
         # Keywords (schema:keywords or keywords) – normalise to a comma-separated list of human-readable terms,
         # and also treat any keyword URLs that match the EOV vocabulary as EOVs (but avoid duplicating EOV names

@@ -17,6 +17,7 @@ export interface ProjectDetail {
   }>
   contacts?: Array<{ name?: string; email?: string; url?: string; contact_type?: string }>
   services?: Array<{ name?: string; url?: string }>
+  publishing_principles?: Array<{ name?: string; url?: string }>
   readiness_data?: string
   readiness_requirements?: string
   readiness_coordination?: string
@@ -289,6 +290,25 @@ export function ProjectDetailDialog({ projectId, onClose, onShowObisData }: Proj
                   </ul>
                 </div>
               ) : null}
+              {project.publishing_principles?.length ? (
+                <div className="dialog-section">
+                  <span className="dialog-meta-label">Methods / SOPs</span>
+                  <ul className="dialog-eov-list">
+                    {project.publishing_principles.map((p, i) => {
+                      const href = p.url?.trim()
+                      if (!href) return null
+                      const label = p.name?.trim() || href
+                      return (
+                        <li key={i}>
+                          <a href={href} target="_blank" rel="noopener noreferrer" className="dialog-link">
+                            {label}
+                          </a>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              ) : null}
               {project.contacts?.length ? (
                 <div className="dialog-section">
                   <span className="dialog-meta-label">Contacts</span>
@@ -329,7 +349,7 @@ export function ProjectDetailDialog({ projectId, onClose, onShowObisData }: Proj
                       <li key={i}>
                         {s.name && <>{s.name}{s.url && ' – '}</>}
                         {s.url && (
-                          <a href={s.url} target="_blank" rel="noopener noreferrer" className="dialog-link dialog-link-muted">
+                          <a href={s.url} target="_blank" rel="noopener noreferrer" className="dialog-link">
                             {s.url}
                           </a>
                         )}

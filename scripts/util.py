@@ -99,7 +99,13 @@ def ensure_indices(client, clear_indexes: bool = False):
                 "readiness_requirements": {"type": "keyword"},
                 "readiness_coordination": {"type": "keyword"},
                 "maintenance_frequency": {"type": "keyword"},
-                "publishing_principles": {"type": "keyword"},
+                "publishing_principles": {
+                    "type": "nested",
+                    "properties": {
+                        "name": {"type": "keyword"},
+                        "url": {"type": "keyword"},
+                    },
+                },
                 "funding_categories": {"type": "keyword"},
                 "funding_descriptions": {"type": "text"},
                 "additional_properties": {
@@ -171,6 +177,23 @@ def ensure_indices(client, clear_indexes: bool = False):
 
     for index, mapping in ((project_index, project_mapping), (grid_index, grid_mapping)):
         exists = client.indices.exists(index=index)
+        if not clear_indexes and exists and index == project_index:
+            # keyword → nested for publishing_principles requires a recreate
+            try:
+                current = client.indices.get_mapping(index=project_index)
+                props = current[project_index]["mappings"].get("properties", {})
+                pp = props.get("publishing_principles") or {}
+                if pp and pp.get("type") != "nested":
+                    logging.warning(
+                        "Recreating %s and %s: publishing_principles mapping changed "
+                        "from %s to nested",
+                        project_index,
+                        grid_index,
+                        pp.get("type"),
+                    )
+                    clear_indexes = True
+            except Exception as e:
+                logging.warning("Could not inspect existing project mapping: %s", e)
         if clear_indexes and exists:
             logging.info("Deleting existing index %s", index)
             client.indices.delete(index=index)
@@ -188,14 +211,19 @@ def ensure_indices(client, clear_indexes: bool = False):
             )
 
     if client.indices.exists(index=project_index):
-        client.indices.put_mapping(
-            index=project_index,
-            body={
-                "properties": {
-                    "identifiers": project_mapping["mappings"]["properties"]["identifiers"]
-                }
-            },
-        )
+        for field in ("identifiers", "publishing_principles"):
+            try:
+                client.indices.put_mapping(
+                    index=project_index,
+                    body={"properties": {field: project_mapping["mappings"]["properties"][field]}},
+                )
+            except Exception as e:
+                logging.warning(
+                    "Could not update project mapping for %s "
+                    "(re-run with --clear-indexes if the field type changed): %s",
+                    field,
+                    e,
+                )
 
     # Keep import_run history across --clear-indexes (project/grid rebuilds).
     if not client.indices.exists(index=import_run_index):
@@ -404,6 +432,44 @@ def extract_identifiers(node: dict) -> list[dict]:
         seen.add(key)
         identifiers.append(parsed)
     return identifiers
+
+
+def _publishing_principle_from_item(item) -> dict | None:
+    """Return {name, url} for a method/SOP/license link, or None if unusable."""
+    if item is None:
+        return None
+    if isinstance(item, str):
+        url = item.strip()
+        if url.startswith("http://") or url.startswith("https://"):
+            return {"name": "", "url": url}
+        return None
+    if not isinstance(item, dict):
+        return None
+    url = _schema_text(get_schema(item, "url"))
+    name = _schema_text(get_schema(item, "name"))
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return None
+    return {"name": name, "url": url}
+
+
+def extract_publishing_principles(node: dict) -> list[dict]:
+    """
+    Parse schema:publishingPrinciples (methods, SOPs, manuals, licenses).
+
+    Accepts bare URL strings or CreativeWork-like objects with schema:url / schema:name.
+    """
+    principles: list[dict] = []
+    seen: set[str] = set()
+    for item in as_list(get_schema(node, "publishingPrinciples")):
+        parsed = _publishing_principle_from_item(item)
+        if not parsed:
+            continue
+        url = parsed["url"]
+        if url in seen:
+            continue
+        seen.add(url)
+        principles.append(parsed)
+    return principles
 
 
 def _shift_geom_longitude(geom, to_360: bool):
@@ -1064,6 +1130,32 @@ def index_project_bindings(
                     del project["services"]
             else:
                 del project["services"]
+
+        # Methods / SOP links (schema:publishingPrinciples)
+        if "publishing_principles" in project:
+            principles_value = project["publishing_principles"]
+            if principles_value:
+                try:
+                    parsed_principles = json.loads(principles_value)
+                    if isinstance(parsed_principles, list) and parsed_principles:
+                        project["publishing_principles"] = parsed_principles
+                    else:
+                        del project["publishing_principles"]
+                except Exception:
+                    # Legacy ||-joined URL string from older ingest
+                    urls = [
+                        u.strip()
+                        for u in str(principles_value).split("||")
+                        if u.strip().startswith(("http://", "https://"))
+                    ]
+                    if urls:
+                        project["publishing_principles"] = [
+                            {"name": "", "url": u} for u in dict.fromkeys(urls)
+                        ]
+                    else:
+                        del project["publishing_principles"]
+            else:
+                del project["publishing_principles"]
 
         if "identifiers" in project:
             identifiers_value = project["identifiers"]

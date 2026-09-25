@@ -29,6 +29,7 @@ from util import (
     create_es_client,
     ensure_indices,
     extract_identifiers,
+    extract_publishing_principles,
     extract_wkt,
     get_schema,
     index_project_bindings,
@@ -319,10 +320,9 @@ def build_bindings_from_eov_app_graph(
         if temporal and str(temporal).strip():
             b["temporal_coverage"] = {"value": str(temporal).strip()}
 
-        publishing = as_list(get_schema(node, "publishingPrinciples"))
-        pub_urls = [str(p).strip() for p in publishing if str(p).strip()]
-        if pub_urls:
-            b["publishing_principles"] = {"value": pub_urls[0] if len(pub_urls) == 1 else "||".join(pub_urls)}
+        publishing_principles = extract_publishing_principles(node)
+        if publishing_principles:
+            b["publishing_principles"] = {"value": json.dumps(publishing_principles)}
 
         general_keywords = _extract_general_keywords(node)
         if general_keywords:

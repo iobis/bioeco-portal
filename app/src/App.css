@@ -1392,6 +1392,8 @@ a.project-card-link {
   padding-left: 18px;
   font-size: 13px;
   color: var(--text);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .dialog-actions {
@@ -1408,6 +1410,8 @@ a.project-card-link {
   font-weight: 400;
   color: var(--accent);
   text-decoration: none;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .dialog-link:hover {
