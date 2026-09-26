@@ -196,11 +196,22 @@
   color: var(--muted);
 }
 
+.rd-legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 22px;
+}
+
 .rd-legend {
   display: flex;
   flex-wrap: wrap;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: 10px 14px;
-  margin-bottom: 22px;
+  margin: 0;
   padding: 0;
   background: transparent;
   border: none;
@@ -420,6 +431,14 @@
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.rd-legend-row .rd-scale-toggle {
+  flex: 0 0 auto;
+  flex-grow: 0;
+  width: max-content;
+  max-width: max-content;
+  margin-left: auto;
 }
 
 .status-filter-btn:hover {

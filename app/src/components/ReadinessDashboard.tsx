@@ -7,12 +7,14 @@ type LevelCounts = Record<string, number>
 interface EovReadinessRow {
   code: string
   programmes: number
+  programmes_in_eov?: number
   data: LevelCounts
   requirements: LevelCounts
   coordination: LevelCounts
 }
 
 interface ReadinessByEovResponse {
+  programmes_total: number
   programmes_with_readiness: number
   eovs: EovReadinessRow[]
 }
@@ -40,6 +42,8 @@ const LEVEL_COLORS: Record<number, string> = {
   9: '#2a6b7a',
 }
 
+const REST_COLOR = '#e2e8f0'
+
 function sumCounts(counts: LevelCounts): number {
   return Object.values(counts).reduce((a, b) => a + b, 0)
 }
@@ -55,9 +59,21 @@ function weightedMean(counts: LevelCounts): number | null {
   return n ? sum / n : null
 }
 
-function StackedBar({ counts, label }: { counts: LevelCounts; label: string }) {
-  const total = sumCounts(counts)
-  if (!total) {
+function StackedBar({
+  counts,
+  label,
+  programmesInEov,
+  relativeToEov,
+}: {
+  counts: LevelCounts
+  label: string
+  programmesInEov: number
+  relativeToEov: boolean
+}) {
+  const reported = sumCounts(counts)
+  const scaleTotal = relativeToEov ? programmesInEov : reported
+
+  if (!scaleTotal || (!relativeToEov && !reported)) {
     return (
       <div className="rd-bar-row">
         <span className="rd-bar-label">{label}</span>
@@ -67,18 +83,20 @@ function StackedBar({ counts, label }: { counts: LevelCounts; label: string }) {
       </div>
     )
   }
+
+  const remainder = relativeToEov ? Math.max(0, scaleTotal - reported) : 0
+  const aria = relativeToEov
+    ? `${label}: ${reported} of ${scaleTotal} programmes for this EOV`
+    : `${label}: ${reported} programmes across levels`
+
   return (
     <div className="rd-bar-row">
       <span className="rd-bar-label">{label}</span>
-      <div
-        className="rd-bar"
-        role="img"
-        aria-label={`${label}: ${total} programmes across levels`}
-      >
+      <div className="rd-bar" role="img" aria-label={aria}>
         {READINESS_LEVEL_OPTIONS.map(({ value, label: levelLabel }) => {
           const count = counts[String(value)] || 0
           if (!count) return null
-          const pct = (count / total) * 100
+          const pct = (count / scaleTotal) * 100
           return (
             <span
               key={value}
@@ -88,8 +106,18 @@ function StackedBar({ counts, label }: { counts: LevelCounts; label: string }) {
             />
           )
         })}
+        {remainder > 0 ? (
+          <span
+            className="rd-bar-seg rd-bar-seg--rest"
+            style={{ width: `${(remainder / scaleTotal) * 100}%`, background: REST_COLOR }}
+            title={`No readiness value: ${remainder}`}
+          />
+        ) : null}
       </div>
-      <span className="rd-bar-mean" title="Mean level">
+      <span
+        className="rd-bar-mean"
+        title="Mean level among programmes with this readiness field"
+      >
         {weightedMean(counts)?.toFixed(1) ?? '—'}
       </span>
     </div>
@@ -100,6 +128,7 @@ export function ReadinessDashboard({ eovVocabulary = null }: ReadinessDashboardP
   const [data, setData] = useState<ReadinessByEovResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [relativeToEov, setRelativeToEov] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -121,11 +150,13 @@ export function ReadinessDashboard({ eovVocabulary = null }: ReadinessDashboardP
         .sort((a, b) => a.label.localeCompare(b.label))
         .map((t) => {
           const stats = byCode.get(t.code)
+          const programmes = stats?.programmes ?? 0
           return {
             code: t.code,
             label: t.label,
             badge: t.badge?.bg ?? '#94a3b8',
-            programmes: stats?.programmes ?? 0,
+            programmes,
+            programmes_in_eov: stats?.programmes_in_eov ?? programmes,
             data: stats?.data ?? {},
             requirements: stats?.requirements ?? {},
             coordination: stats?.coordination ?? {},
@@ -137,6 +168,7 @@ export function ReadinessDashboard({ eovVocabulary = null }: ReadinessDashboardP
       label: e.code,
       badge: '#94a3b8',
       programmes: e.programmes,
+      programmes_in_eov: e.programmes_in_eov ?? e.programmes,
       data: e.data,
       requirements: e.requirements,
       coordination: e.coordination,
@@ -149,24 +181,41 @@ export function ReadinessDashboard({ eovVocabulary = null }: ReadinessDashboardP
         <div>
           <h2 className="rd-title">Readiness by EOV</h2>
           <p className="rd-subtitle">
-            Distribution of GOOS readiness levels across programmes that report each Essential Ocean Variable.
-            Mean level is shown to the right of each bar.
+            Distribution of GOOS readiness levels across programmes that report each Essential Ocean
+            Variable. Mean level is shown to the right of each bar.
           </p>
         </div>
         {data && (
           <p className="rd-meta">
-            Based on <strong>{data.programmes_with_readiness}</strong> programmes with readiness metadata
+            Based on <strong>{data.programmes_with_readiness}</strong> programmes with readiness
+            metadata
           </p>
         )}
       </header>
 
-      <div className="rd-legend" aria-label="Level colour legend">
-        {READINESS_LEVEL_OPTIONS.map(({ value, shortLabel, label }) => (
-          <span key={value} className="rd-legend-item" title={label}>
-            <span className="rd-legend-swatch" style={{ background: LEVEL_COLORS[value] }} />
-            {shortLabel}
-          </span>
-        ))}
+      <div className="rd-legend-row">
+        <div className="rd-legend" aria-label="Level colour legend">
+          {READINESS_LEVEL_OPTIONS.map(({ value, shortLabel, label }) => (
+            <span key={value} className="rd-legend-item" title={label}>
+              <span className="rd-legend-swatch" style={{ background: LEVEL_COLORS[value] }} />
+              {shortLabel}
+            </span>
+          ))}
+          {relativeToEov ? (
+            <span className="rd-legend-item" title="Programmes for this EOV without this readiness value">
+              <span className="rd-legend-swatch" style={{ background: REST_COLOR }} />
+              No value
+            </span>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          className="status-filter-btn is-active rd-scale-toggle"
+          aria-pressed={relativeToEov}
+          onClick={() => setRelativeToEov((v) => !v)}
+        >
+          {relativeToEov ? 'All programmes' : 'Programmes with readiness'}
+        </button>
       </div>
 
       {loading && <p className="list-message">Loading readiness stats…</p>}
@@ -180,15 +229,25 @@ export function ReadinessDashboard({ eovVocabulary = null }: ReadinessDashboardP
                 <span className="rd-eov-dot" style={{ background: row.badge }} aria-hidden />
                 <h3 className="rd-eov-name">{row.label}</h3>
                 <span className="rd-eov-count">
-                  {row.programmes
-                    ? `${row.programmes} programme${row.programmes === 1 ? '' : 's'}`
-                    : 'No readiness data'}
+                  {relativeToEov
+                    ? row.programmes_in_eov
+                      ? `${row.programmes} of ${row.programmes_in_eov} with readiness`
+                      : 'No programmes'
+                    : row.programmes
+                      ? `${row.programmes} programme${row.programmes === 1 ? '' : 's'}`
+                      : 'No readiness data'}
                 </span>
               </div>
-              {row.programmes > 0 ? (
+              {row.programmes > 0 || (relativeToEov && row.programmes_in_eov > 0) ? (
                 <div className="rd-eov-bars">
                   {DIMENSIONS.map(({ key, label }) => (
-                    <StackedBar key={key} label={label} counts={row[key] as LevelCounts} />
+                    <StackedBar
+                      key={key}
+                      label={label}
+                      counts={row[key] as LevelCounts}
+                      programmesInEov={row.programmes_in_eov}
+                      relativeToEov={relativeToEov}
+                    />
                   ))}
                 </div>
               ) : (
