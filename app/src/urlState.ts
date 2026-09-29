@@ -5,6 +5,13 @@ import {
   READINESS_LEVEL_OPTIONS,
   type ReadinessSelection,
 } from './readiness'
+import {
+  DEFAULT_TIME_RANGE,
+  normalizeTimeRange,
+  parseYearParam,
+  timeRangeToObisParams,
+  type TimeRange,
+} from './timeRange'
 
 export type AppView = 'map' | 'readiness' | 'data-quality' | 'about'
 export type MapLayerMode = 'programmes' | 'eovs' | 'data'
@@ -23,6 +30,7 @@ export interface PortalUrlState {
   opacity: number
   labels: boolean
   globe: boolean
+  timeRange: TimeRange
 }
 
 export const DEFAULT_URL_STATE: PortalUrlState = {
@@ -38,6 +46,7 @@ export const DEFAULT_URL_STATE: PortalUrlState = {
   opacity: 0.4,
   labels: true,
   globe: false,
+  timeRange: DEFAULT_TIME_RANGE,
 }
 
 const VIEWS = new Set<AppView>(['map', 'readiness', 'data-quality', 'about'])
@@ -93,6 +102,9 @@ export function parseUrlState(search: string = window.location.search): PortalUr
     readiness[key] = parseReadinessLevels(params.get(param))
   }
 
+  const startYear = parseYearParam(params.get('startdate')) ?? DEFAULT_TIME_RANGE.startYear
+  const endYear = parseYearParam(params.get('enddate')) ?? DEFAULT_TIME_RANGE.endYear
+
   return {
     view: viewRaw && VIEWS.has(viewRaw) ? viewRaw : DEFAULT_URL_STATE.view,
     programme: params.get('programme')?.trim() || null,
@@ -106,6 +118,7 @@ export function parseUrlState(search: string = window.location.search): PortalUr
     opacity: parseOpacity(params.get('opacity')),
     labels: parseLabels(params.get('labels')),
     globe: parseBoolFlag(params.get('globe'), DEFAULT_URL_STATE.globe),
+    timeRange: normalizeTimeRange({ startYear, endYear }),
   }
 }
 
@@ -128,6 +141,9 @@ export function serializeUrlState(state: PortalUrlState): URLSearchParams {
   if (state.opacity !== d.opacity) params.set('opacity', String(state.opacity))
   if (state.labels !== d.labels) params.set('labels', state.labels ? '1' : '0')
   if (state.globe !== d.globe) params.set('globe', state.globe ? '1' : '0')
+  const timeParams = timeRangeToObisParams(state.timeRange)
+  if (timeParams.startdate) params.set('startdate', timeParams.startdate)
+  if (timeParams.enddate) params.set('enddate', timeParams.enddate)
 
   return params
 }

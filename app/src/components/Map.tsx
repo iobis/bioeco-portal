@@ -5,7 +5,13 @@ import { eovTagUrls, type EovVocabulary } from '../eovVocabulary'
 import type { ObisProgrammeFilter } from './ProjectDetailDialog'
 import type { ProgrammeStatus } from '../programmeStatus'
 import { PROGRAMME_STATUS_OPTIONS } from '../programmeStatus'
+import {
+  appendTimeRangeParams,
+  DEFAULT_TIME_RANGE,
+  type TimeRange,
+} from '../timeRange'
 import type { ColorSchemeId, MapLayerMode } from '../urlState'
+import { TimeRangeSlider } from './TimeRangeSlider'
 import {
   EMPTY_READINESS_SELECTION,
   READINESS_DIMENSIONS,
@@ -206,6 +212,8 @@ interface MapProps {
   onGlobeChange?: (globe: boolean) => void
   obisProgrammeFilter?: ObisProgrammeFilter | null
   onClearObisProgrammeFilter?: () => void
+  timeRange?: TimeRange
+  onTimeRangeChange?: (range: TimeRange) => void
 }
 
 export function Map({
@@ -231,6 +239,8 @@ export function Map({
   onGlobeChange,
   obisProgrammeFilter = null,
   onClearObisProgrammeFilter,
+  timeRange = DEFAULT_TIME_RANGE,
+  onTimeRangeChange,
 }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -711,6 +721,7 @@ export function Map({
 
     const params = new URLSearchParams()
     params.set('tags', tags.join(','))
+    appendTimeRangeParams(params, timeRange)
     const tileUrl = `${OBIS_TILE_TEMPLATE}?${params.toString()}`
 
     removeObis()
@@ -759,7 +770,7 @@ export function Map({
       },
       map.getLayer(CELL_HOVER_LAYER_ID) ? CELL_HOVER_LAYER_ID : undefined,
     )
-  }, [mapLayer, selectedEovCategories, eovVocabulary, mapReady, obisProgrammeFilter])
+  }, [mapLayer, selectedEovCategories, eovVocabulary, mapReady, obisProgrammeFilter, timeRange])
 
   useEffect(() => {
     const map = mapRef.current
@@ -1037,6 +1048,9 @@ export function Map({
           </label>
         </div>
       </div>
+      {isDataLayer && onTimeRangeChange ? (
+        <TimeRangeSlider value={timeRange} onChange={onTimeRangeChange} />
+      ) : null}
       <div className="map-legend">
         <span className="map-legend-title">
           {isDataLayer ? OBIS_METRIC.label : GRID_METRICS[gridMetric].label}

@@ -7,6 +7,7 @@ import { AboutPage } from './components/AboutPage'
 import { DataQualityPage } from './components/DataQualityPage'
 import { ProjectDetailDialog, type ObisProgrammeFilter } from './components/ProjectDetailDialog'
 import { ReadinessDashboard } from './components/ReadinessDashboard'
+import { type TimeRange } from './timeRange'
 import {
   parseUrlState,
   replaceUrlState,
@@ -44,6 +45,7 @@ function applyParsedState(
     setGridOpacity: (v: number) => void
     setShowGridLabels: (v: boolean) => void
     setGlobe: (v: boolean) => void
+    setTimeRange: (v: TimeRange) => void
   },
 ) {
   setters.setView(parsed.view)
@@ -59,6 +61,7 @@ function applyParsedState(
   setters.setGridOpacity(parsed.opacity)
   setters.setShowGridLabels(parsed.labels)
   setters.setGlobe(parsed.globe)
+  setters.setTimeRange(parsed.timeRange)
 }
 
 export default function App() {
@@ -81,6 +84,7 @@ export default function App() {
   const [gridOpacity, setGridOpacity] = useState(initial.opacity)
   const [showGridLabels, setShowGridLabels] = useState(initial.labels)
   const [globe, setGlobe] = useState(initial.globe)
+  const [timeRange, setTimeRange] = useState<TimeRange>(initial.timeRange)
   const [eovVocabulary, setEovVocabulary] = useState<EovVocabulary | null>(null)
 
   useEffect(() => {
@@ -109,6 +113,7 @@ export default function App() {
       opacity: gridOpacity,
       labels: showGridLabels,
       globe,
+      timeRange,
     })
   }, [
     view,
@@ -123,6 +128,7 @@ export default function App() {
     gridOpacity,
     showGridLabels,
     globe,
+    timeRange,
   ])
 
   useEffect(() => {
@@ -148,6 +154,7 @@ export default function App() {
         setGridOpacity,
         setShowGridLabels,
         setGlobe,
+        setTimeRange,
       })
     }
     window.addEventListener('popstate', onPopState)
@@ -224,6 +231,8 @@ export default function App() {
             onGlobeChange={setGlobe}
             obisProgrammeFilter={obisProgrammeFilter}
             onClearObisProgrammeFilter={() => setObisProgrammeFilter(null)}
+            timeRange={timeRange}
+            onTimeRangeChange={setTimeRange}
           />
           <aside className="panel">
             <div className="panel-content">
@@ -259,6 +268,7 @@ export default function App() {
             eovCategories={selectedEovCategories}
             eovVocabulary={eovVocabulary}
             programmeTags={obisProgrammeFilter?.tags ?? null}
+            timeRange={timeRange}
           />
         </div>
       ) : (

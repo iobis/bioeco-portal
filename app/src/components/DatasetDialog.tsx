@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { buildEovResolver, eovTagUrls, type EovVocabulary } from '../eovVocabulary'
+import { appendTimeRangeParams, DEFAULT_TIME_RANGE, type TimeRange } from '../timeRange'
 
 const OBIS_DATASET_API = 'https://api.obis.org/dataset'
 const OBIS_DATASET_PAGE = 'https://obis.org/dataset'
@@ -25,6 +26,7 @@ interface DatasetDialogProps {
   eovCategories?: string[]
   eovVocabulary?: EovVocabulary | null
   programmeTags?: string[] | null
+  timeRange?: TimeRange
 }
 
 function bboxStringToWkt(bbox: string): string | null {
@@ -69,6 +71,7 @@ export function DatasetDialog({
   eovCategories = [],
   eovVocabulary = null,
   programmeTags = null,
+  timeRange = DEFAULT_TIME_RANGE,
 }: DatasetDialogProps) {
   const [data, setData] = useState<DatasetListResponse | null>(null)
   const [loading, setLoading] = useState(false)
@@ -112,6 +115,7 @@ export function DatasetDialog({
       return
     }
     params.set('tags', tags.join(','))
+    appendTimeRangeParams(params, timeRange)
 
     fetch(`${OBIS_DATASET_API}?${params}`, { signal: controller.signal })
       .then((r) => {
@@ -134,7 +138,7 @@ export function DatasetDialog({
       })
 
     return () => controller.abort()
-  }, [cellBbox, eovCategories, eovVocabulary, programmeTags])
+  }, [cellBbox, eovCategories, eovVocabulary, programmeTags, timeRange])
 
   if (cellBbox == null) return null
 
