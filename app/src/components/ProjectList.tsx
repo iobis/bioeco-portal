@@ -300,7 +300,7 @@ export function ProjectList({
 
   return (
     <>
-      <div className="panel-search">
+      <div className="panel-search" data-tour="search">
         {cellBbox && onClearCellFilter && (
           <button type="button" className="panel-cell-filter-clear" onClick={onClearCellFilter}>
             Clear map filter
@@ -324,7 +324,7 @@ export function ProjectList({
       )}
       {items.length > 0 && (
         <>
-          <ul ref={listRef} className="project-list">
+          <ul ref={listRef} className="project-list" data-tour="programme-list">
             {items.map((p) => (
               <li
                 key={p.id}

@@ -31,7 +31,7 @@ export function TimeRangeSlider({ value, onChange }: TimeRangeSliderProps) {
   }
 
   return (
-    <div className="map-time-bar" role="group" aria-labelledby={labelId}>
+    <div className="map-time-bar" data-tour="time-range" role="group" aria-labelledby={labelId}>
       <div className="map-time-bar-header">
         <span id={labelId} className="map-eov-widget-title">
           Time range

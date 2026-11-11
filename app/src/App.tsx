@@ -7,6 +7,7 @@ import { AboutPage } from './components/AboutPage'
 import { DataQualityPage } from './components/DataQualityPage'
 import { ProjectDetailDialog, type ObisProgrammeFilter } from './components/ProjectDetailDialog'
 import { ReadinessDashboard } from './components/ReadinessDashboard'
+import { Tour, hasSeenTour } from './components/Tour'
 import { type TimeRange } from './timeRange'
 import {
   parseUrlState,
@@ -86,6 +87,23 @@ export default function App() {
   const [globe, setGlobe] = useState(initial.globe)
   const [timeRange, setTimeRange] = useState<TimeRange>(initial.timeRange)
   const [eovVocabulary, setEovVocabulary] = useState<EovVocabulary | null>(null)
+  // Auto-open the tour on a first visit to the map.
+  const [tourOpen, setTourOpen] = useState(() => initial.view === 'map' && !hasSeenTour())
+  /** Layer the user had before the tour started, restored when it closes. */
+  const tourLayerRestoreRef = useRef<MapLayerMode>(mapLayer)
+
+  const startTour = () => {
+    tourLayerRestoreRef.current = mapLayer
+    setSelectedProjectId(null)
+    setDatasetCellBbox(null)
+    setView('map')
+    setTourOpen(true)
+  }
+
+  const closeTour = () => {
+    setTourOpen(false)
+    setMapLayer(tourLayerRestoreRef.current)
+  }
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearchQuery(searchQuery.trim()), SEARCH_DEBOUNCE_MS)
@@ -169,15 +187,18 @@ export default function App() {
         <h1>
           <a href="/">GOOS BioEco Portal</a>
         </h1>
-        <nav className="site-header-nav" aria-label="Site">
+        <nav className="site-header-nav" aria-label="Site" data-tour="nav">
           <div className="site-header-nav-actions">
+            <button type="button" className="site-header-submit-btn" onClick={startTour}>
+              Portal Tour
+            </button>
             <a
               href="https://eovmetadata.obis.org/home"
               target="_blank"
               rel="noopener noreferrer"
               className="site-header-submit-btn"
             >
-              Submit or update an entry
+              Submit or Update an Entry
             </a>
             <a
               href="https://github.com/iobis/bioeco-prototyping/issues/new"
@@ -278,6 +299,7 @@ export default function App() {
           {view === 'about' && <AboutPage />}
         </div>
       )}
+      <Tour open={tourOpen && view === 'map'} onClose={closeTour} onLayerChange={setMapLayer} />
     </div>
   )
 }

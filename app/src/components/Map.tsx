@@ -911,9 +911,9 @@ export function Map({
 
   return (
     <div className="map-wrap" style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <div ref={containerRef} className="map-container" style={{ width: '100%', height: '100%' }} />
+      <div ref={containerRef} data-tour="map" className="map-container" style={{ width: '100%', height: '100%' }} />
       <div className="map-eov-widget">
-        <div className="map-filter-section">
+        <div className="map-filter-section" data-tour="map-layer">
           <span className="map-eov-widget-title">Map layer</span>
           <div className="status-filter" role="group" aria-label="Map layer">
             {MAP_LAYER_OPTIONS.map(({ value, label }) => (
@@ -941,7 +941,7 @@ export function Map({
           </div>
         ) : null}
         {onEovCategoriesChange && eovVocabulary?.top_level_eovs?.length ? (
-          <div className="map-filter-section">
+          <div className="map-filter-section" data-tour="eov-filter">
             <span className="map-eov-widget-title">
               {isDataLayer ? 'EOV (OBIS tags)' : 'EOV filter'}
             </span>
@@ -965,7 +965,7 @@ export function Map({
         ) : null}
         {!isDataLayer && onReadinessChange ? (
           READINESS_DIMENSIONS.map(({ key, label }) => (
-            <div key={key} className="map-filter-section">
+            <div key={key} className="map-filter-section" data-tour="programme-filters">
               <span className="map-eov-widget-title">{label}</span>
               <div className="status-filter readiness-level-filter" role="group" aria-label={label}>
                 {READINESS_LEVEL_OPTIONS.map(({ value, shortLabel, label: fullLabel }) => (
@@ -985,7 +985,7 @@ export function Map({
           ))
         ) : null}
         {!isDataLayer && onProgrammeStatusChange && (
-          <div className="map-filter-section">
+          <div className="map-filter-section" data-tour="programme-filters">
             <span className="map-eov-widget-title">Status</span>
             <div className="status-filter" role="group" aria-label="Programme status">
               {PROGRAMME_STATUS_OPTIONS.map(({ value, label }) => (
@@ -1002,7 +1002,7 @@ export function Map({
             </div>
           </div>
         )}
-        <div className="map-filter-section">
+        <div className="map-filter-section" data-tour="display-options">
           <span className="map-eov-widget-title">Colour</span>
           <select
             className="map-style-select"
@@ -1017,7 +1017,7 @@ export function Map({
             ))}
           </select>
         </div>
-        <div className="map-filter-section">
+        <div className="map-filter-section" data-tour="display-options">
           <span className="map-eov-widget-title">
             Opacity <span className="map-opacity-value">{Math.round(gridOpacity * 100)}%</span>
           </span>
@@ -1037,7 +1037,7 @@ export function Map({
             onChange={(e) => onGridOpacityChange?.(Number(e.target.value))}
           />
         </div>
-        <div className="map-filter-section">
+        <div className="map-filter-section" data-tour="display-options">
           <label className="map-eov-toggle">
             <input
               type="checkbox"
@@ -1051,7 +1051,7 @@ export function Map({
       {isDataLayer && onTimeRangeChange ? (
         <TimeRangeSlider value={timeRange} onChange={onTimeRangeChange} />
       ) : null}
-      <div className="map-legend">
+      <div className="map-legend" data-tour="display-options">
         <span className="map-legend-title">
           {isDataLayer ? OBIS_METRIC.label : GRID_METRICS[gridMetric].label}
         </span>
