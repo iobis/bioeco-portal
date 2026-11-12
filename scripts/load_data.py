@@ -14,6 +14,7 @@ from util import (
     build_eov_by_id,
     create_es_client,
     ensure_indices,
+    extract_countries,
     extract_identifiers,
     extract_publishing_principles,
     extract_wkt,
@@ -299,6 +300,10 @@ def build_bindings_from_jsonld_graph(graph):
 
         if services:
             b["services"] = {"value": json.dumps(services)}
+
+        countries = extract_countries(node)
+        if countries:
+            b["declared_countries"] = {"value": json.dumps(countries)}
 
         # Geometry: from geosparql:hasGeometry or areaServed[*].geo.geosparql:asWKT
         wkt_val = extract_wkt(node)
