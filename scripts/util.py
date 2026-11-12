@@ -8,8 +8,7 @@ from shapely.geometry import mapping, LineString, Polygon, shape
 from shapely.ops import split as split_geom, transform, unary_union
 from shapely.validation import make_valid
 import logging
-from polygon_geohasher.polygon_geohasher import polygon_to_geohashes
-import geohash
+from geohash_grid import geohash_center, polygon_to_geohashes
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +20,8 @@ try:
     import antimeridian
 except Exception:
     antimeridian = None
+
+from eez import EezIndex
 
 project_index = "project"
 grid_index = "project_grid"
@@ -50,6 +51,38 @@ def log_colored(level: str, label: str, message: str):
 # Path to repo root and data dir
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "data"
+
+
+# Sovereign ISO3 codes (plus "ABNJ" for high seas) and Marine Regions EEZ ids.
+# On project docs: union of grid-cell tags and declared schema:country values.
+COUNTRY_FIELD_MAPPINGS = {
+    "country_isos": {"type": "keyword"},
+    "eez_mrgids": {"type": "keyword"},
+}
+
+_eez_index: EezIndex | None = None
+_eez_index_loaded = False
+
+
+def get_eez_index() -> EezIndex | None:
+    """Load the EEZ spatial index once per process (None if data is missing)."""
+    global _eez_index, _eez_index_loaded
+    if not _eez_index_loaded:
+        _eez_index = EezIndex.load(DATA_DIR)
+        _eez_index_loaded = True
+    return _eez_index
+
+
+def extract_countries(node: dict) -> list[str]:
+    """Declared countries from schema:country (strings or {name} objects)."""
+    names: list[str] = []
+    for item in as_list(get_schema(node, "country")):
+        if isinstance(item, dict):
+            item = get_schema(item, "name") or item.get("@value") or item.get("@id")
+        text = str(item or "").strip()
+        if text and text not in names:
+            names.append(text)
+    return names
 
 
 def ensure_indices(client, clear_indexes: bool = False):
@@ -131,7 +164,10 @@ def ensure_indices(client, clear_indexes: bool = False):
                         "url": {"type": "keyword"}
                     }
                 },
-                "geometry": {"type": "geo_shape"}
+                "geometry": {"type": "geo_shape"},
+                **COUNTRY_FIELD_MAPPINGS,
+                "country_isos_declared": {"type": "keyword"},
+                "countries_declared": {"type": "keyword"},
             }
         }
     }
@@ -148,7 +184,8 @@ def ensure_indices(client, clear_indexes: bool = False):
                 "readiness_coordination": {"type": "keyword"},
                 "start_year": {"type": "integer"},
                 "end_year": {"type": "integer"},
-                "geometry": {"type": "geo_point"}
+                "geometry": {"type": "geo_point"},
+                **COUNTRY_FIELD_MAPPINGS,
             }
         }
     }
@@ -224,6 +261,23 @@ def ensure_indices(client, clear_indexes: bool = False):
                     field,
                     e,
                 )
+
+    # Country fields were added after the first deployments; add them to existing
+    # indices so they are keyword-mapped (dynamic mapping would make them text).
+    for index, mapping in ((project_index, project_mapping), (grid_index, grid_mapping)):
+        if not client.indices.exists(index=index):
+            continue
+        props = mapping["mappings"]["properties"]
+        country_props = {k: props[k] for k in props if k.startswith("countr") or k == "eez_mrgids"}
+        try:
+            client.indices.put_mapping(index=index, body={"properties": country_props})
+        except Exception as e:
+            logging.warning(
+                "Could not add country fields to %s mapping "
+                "(re-run with --clear-indexes): %s",
+                index,
+                e,
+            )
 
     # Keep import_run history across --clear-indexes (project/grid rebuilds).
     if not client.indices.exists(index=import_run_index):
@@ -1015,6 +1069,8 @@ def index_project_bindings(
         "projects_removed": 0,
         "temporal_coverage_removed": 0,
         "geometry_normalized": 0,
+        "projects_with_countries": 0,
+        "countries_unresolved": 0,
         "not_indexed_files": set(),
     }
     active_project_ids: set[str] = set()
@@ -1244,8 +1300,56 @@ def index_project_bindings(
             if buff.geom_type == "Polygon":
                 buff = MultiPolygon([buff])
             for poly in buff.geoms:
-                outer_geohashes_polygon = polygon_to_geohashes(poly, 4, False)
+                outer_geohashes_polygon = polygon_to_geohashes(poly, 4)
                 cells.extend(outer_geohashes_polygon)
+        cells = list(set(cells))
+
+        # Countries: EEZ/land units under the programme's grid cells, plus any
+        # declared via schema:country. Grid docs only carry the spatial tags so
+        # the map shows the part of a programme inside the selected EEZ.
+        eez_index = get_eez_index()
+        cell_tags: dict[str, tuple[list[str], list[str]]] = {}
+        if eez_index is not None and cells:
+            cell_tags = eez_index.tag_cells(cells)
+        spatial_isos = {iso for isos, _ in cell_tags.values() for iso in isos}
+        eez_mrgids = {m for _, mrgids in cell_tags.values() for m in mrgids}
+
+        declared_names: list[str] = []
+        declared_value = project.pop("declared_countries", None)
+        if declared_value:
+            try:
+                declared_names = [str(n) for n in json.loads(declared_value) if str(n).strip()]
+            except (TypeError, ValueError):
+                declared_names = []
+        declared_isos: set[str] = set()
+        for declared in declared_names:
+            iso = eez_index.resolve_country(declared) if eez_index is not None else None
+            if iso:
+                declared_isos.add(iso)
+            else:
+                stats["countries_unresolved"] += 1
+                log_colored(
+                    "WARN",
+                    "COUNTRY_UNKNOWN",
+                    f"unrecognised schema:country '{declared}' for '{project.get('name', '')}' ({project.get('id', '')})",
+                )
+                if issue_logger is not None:
+                    issue_logger.record(
+                        "WARN",
+                        "WARN_UNKNOWN_COUNTRY",
+                        source_file_by_id.get(original_uri, "<unknown>"),
+                        f"unrecognised schema:country value: {declared!r}",
+                    )
+
+        if declared_names:
+            project["countries_declared"] = declared_names
+        if declared_isos:
+            project["country_isos_declared"] = sorted(declared_isos)
+        if spatial_isos or declared_isos:
+            project["country_isos"] = sorted(spatial_isos | declared_isos)
+            stats["projects_with_countries"] += 1
+        if eez_mrgids:
+            project["eez_mrgids"] = sorted(eez_mrgids)
 
         indexed_ok = False
         try:
@@ -1281,10 +1385,10 @@ def index_project_bindings(
                 stats["grid_docs_removed"] += removed
 
             if cells:
-                cells = list(set(cells))
                 actions = []
                 for cell in cells:
-                    lat, lon = geohash.decode(cell)
+                    lat, lon = geohash_center(cell)
+                    cell_isos, cell_mrgids = cell_tags.get(cell, ([], []))
                     doc = {
                         "id": project["id"],
                         "project": project["name"],
@@ -1296,6 +1400,8 @@ def index_project_bindings(
                         "start_year": project.get("start_year"),
                         "end_year": project.get("end_year"),
                         "geometry": (lon, lat),
+                        "country_isos": cell_isos,
+                        "eez_mrgids": cell_mrgids,
                     }
                     actions.append(
                         {
@@ -1351,6 +1457,9 @@ def log_index_summary(stats: dict) -> None:
         log_colored("WARN", "SUMMARY", f"geometry_normalized: {stats['geometry_normalized']}")
     else:
         log_colored("OK", "SUMMARY", "geometry_normalized: 0")
+    log_colored("OK", "SUMMARY", f"projects_with_countries: {stats.get('projects_with_countries', 0)}")
+    if stats.get("countries_unresolved"):
+        log_colored("WARN", "SUMMARY", f"countries_unresolved: {stats['countries_unresolved']}")
     log_colored("OK", "SUMMARY", f"grid_docs_indexed: {stats['grid_docs_indexed']}")
     if stats.get("grid_docs_removed"):
         log_colored("INFO", "SUMMARY", f"grid_docs_removed: {stats['grid_docs_removed']}")

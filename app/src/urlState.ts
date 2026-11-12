@@ -24,6 +24,8 @@ export interface PortalUrlState {
   q: string
   status: ProgrammeStatus
   eov: string[]
+  /** Sovereign ISO3 codes (or ABNJ) for the EEZ country filter. */
+  country: string[]
   readiness: ReadinessSelection
   layer: MapLayerMode
   colour: ColorSchemeId
@@ -40,6 +42,7 @@ export const DEFAULT_URL_STATE: PortalUrlState = {
   q: '',
   status: 'all',
   eov: [],
+  country: [],
   readiness: EMPTY_READINESS_SELECTION,
   layer: 'programmes',
   colour: 'hawaii',
@@ -68,6 +71,13 @@ function parseReadinessLevels(value: string | null): number[] {
     .map((part) => Number(part))
     .filter((n) => Number.isInteger(n) && VALID_LEVELS.has(n))
   return [...new Set(levels)].sort((a, b) => a - b)
+}
+
+function parseCountries(value: string | null): string[] {
+  const codes = parseCsv(value)
+    .map((part) => part.toUpperCase())
+    .filter((code) => /^[A-Z]{3,4}$/.test(code))
+  return [...new Set(codes)]
 }
 
 function parseOpacity(value: string | null): number {
@@ -112,6 +122,7 @@ export function parseUrlState(search: string = window.location.search): PortalUr
     q: params.get('q')?.trim() ?? '',
     status: statusRaw && STATUSES.has(statusRaw) ? statusRaw : DEFAULT_URL_STATE.status,
     eov: parseCsv(params.get('eov')),
+    country: parseCountries(params.get('country')),
     readiness,
     layer: layerRaw && LAYERS.has(layerRaw) ? layerRaw : DEFAULT_URL_STATE.layer,
     colour: colourRaw && COLOURS.has(colourRaw) ? colourRaw : DEFAULT_URL_STATE.colour,
@@ -132,6 +143,7 @@ export function serializeUrlState(state: PortalUrlState): URLSearchParams {
   if (state.q.trim()) params.set('q', state.q.trim())
   if (state.status !== d.status) params.set('status', state.status)
   if (state.eov.length) params.set('eov', state.eov.join(','))
+  if (state.country.length) params.set('country', state.country.join(','))
   for (const { key, param } of READINESS_DIMENSIONS) {
     const levels = state.readiness[key]
     if (levels.length) params.set(param, [...levels].sort((a, b) => a - b).join(','))

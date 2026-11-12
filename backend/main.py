@@ -2,7 +2,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import CORS_ORIGINS
-from routers import projects, tiles, vocabularies, import_runs, stats
+from routers import countries, projects, tiles, vocabularies, import_runs, stats
 
 api_app = FastAPI(
     title="BioEco Portal API",
@@ -15,6 +15,7 @@ api_app.include_router(projects.router, prefix="/projects", tags=["projects"])
 api_app.include_router(tiles.router, prefix="/tiles", tags=["tiles"])
 api_app.include_router(import_runs.router, prefix="/import-runs", tags=["import-runs"])
 api_app.include_router(stats.router, prefix="/stats", tags=["stats"])
+api_app.include_router(countries.router, prefix="/countries", tags=["countries"])
 
 
 @api_app.get("/health")

@@ -7,6 +7,7 @@ import {
   appendReadinessParams,
   type ReadinessSelection,
 } from '../readiness'
+import { appendCountryParams } from '../countries'
 
 interface Eov {
   code?: string
@@ -38,11 +39,13 @@ interface ProjectListProps {
   debouncedSearchQuery?: string
   eovCategories?: string[]
   eovVocabulary?: EovVocabulary | null
+  countries?: string[]
   programmeStatus?: ProgrammeStatus
   readiness?: ReadinessSelection
 }
 
 const PAGE_SIZE = 25
+const NO_COUNTRIES: string[] = []
 /** Wait before loading map geometry so scrolling the list does not fire a fetch per row. */
 const HOVER_DELAY_MS = 400
 
@@ -52,12 +55,14 @@ function appendProjectListParams(
     searchQuery,
     cellBbox,
     eovCategories,
+    countries,
     programmeStatus,
     readiness,
   }: {
     searchQuery: string
     cellBbox: string | null
     eovCategories: string[]
+    countries: string[]
     programmeStatus: ProgrammeStatus
     readiness: ReadinessSelection
   },
@@ -68,6 +73,7 @@ function appendProjectListParams(
   if (eovCategories.length) params.set('eov_category', eovCategories.join(','))
   if (programmeStatus && programmeStatus !== 'all') params.set('status', programmeStatus)
   appendReadinessParams(params, readiness)
+  appendCountryParams(params, countries)
 }
 
 /** Group project EOVs by top-level category using vocabulary resolver; return entries with label and badge bg. */
@@ -98,6 +104,7 @@ export function ProjectList({
   debouncedSearchQuery = '',
   eovCategories = [],
   eovVocabulary = null,
+  countries = NO_COUNTRIES,
   programmeStatus = 'all',
   readiness = EMPTY_READINESS_SELECTION,
 }: ProjectListProps) {
@@ -161,11 +168,12 @@ export function ProjectList({
       searchQuery: debouncedSearchQuery,
       cellBbox,
       eovCategories,
+      countries,
       programmeStatus,
       readiness,
     })
     return params.toString()
-  }, [debouncedSearchQuery, cellBbox, eovCategories, programmeStatus, readiness])
+  }, [debouncedSearchQuery, cellBbox, eovCategories, countries, programmeStatus, readiness])
 
   useEffect(() => {
     pointerOverIdRef.current = null

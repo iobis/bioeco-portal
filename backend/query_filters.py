@@ -133,6 +133,34 @@ def readiness_filters(
     return filters
 
 
+def parse_country_codes(raw: Optional[str]) -> list[str]:
+    """Parse comma-separated sovereign ISO3 codes (or ``ABNJ`` for high seas)."""
+    if not raw or not raw.strip():
+        return []
+    codes: list[str] = []
+    for part in raw.split(","):
+        code = part.strip().upper()
+        if not code:
+            continue
+        if not (code.isalpha() and 3 <= len(code) <= 4):
+            raise ValueError(f"invalid country code: {part!r}")
+        if code not in codes:
+            codes.append(code)
+    return codes
+
+
+def country_filters(codes: Optional[list[str] | str] = None) -> list[dict]:
+    """Match documents tagged with any of the selected countries (OR).
+
+    Works on both indices: grid cells carry the EEZs they intersect; programme
+    docs carry the union of their cells plus declared ``schema:country``.
+    """
+    parsed = parse_country_codes(codes) if isinstance(codes, str) or codes is None else codes
+    if not parsed:
+        return []
+    return [{"terms": {"country_isos": parsed}}]
+
+
 def status_filters(status: Optional[str], *, as_of_year: Optional[int] = None) -> list[dict]:
     """Return ES filter clauses for programme activity relative to a calendar year.
 

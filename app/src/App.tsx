@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { EovVocabulary } from './eovVocabulary'
+import type { CountriesResponse, CountryOption } from './countries'
 import { Map } from './components/Map'
 import { ProjectList } from './components/ProjectList'
 import { DatasetDialog } from './components/DatasetDialog'
@@ -40,6 +41,7 @@ function applyParsedState(
     setDebouncedSearchQuery: (v: string) => void
     setProgrammeStatus: (v: PortalUrlState['status']) => void
     setSelectedEovCategories: (v: string[]) => void
+    setSelectedCountries: (v: string[]) => void
     setSelectedReadiness: (v: PortalUrlState['readiness']) => void
     setMapLayer: (v: MapLayerMode) => void
     setColorScheme: (v: ColorSchemeId) => void
@@ -56,6 +58,7 @@ function applyParsedState(
   setters.setDebouncedSearchQuery(parsed.q)
   setters.setProgrammeStatus(parsed.status)
   setters.setSelectedEovCategories(parsed.eov)
+  setters.setSelectedCountries(parsed.country)
   setters.setSelectedReadiness(parsed.readiness)
   setters.setMapLayer(parsed.layer)
   setters.setColorScheme(parsed.colour)
@@ -77,6 +80,8 @@ export default function App() {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(initial.q)
   const [programmeStatus, setProgrammeStatus] = useState(initial.status)
   const [selectedEovCategories, setSelectedEovCategories] = useState(initial.eov)
+  const [selectedCountries, setSelectedCountries] = useState(initial.country)
+  const [countryOptions, setCountryOptions] = useState<CountryOption[]>([])
   const [selectedReadiness, setSelectedReadiness] = useState(initial.readiness)
   const [mapLayer, setMapLayer] = useState<MapLayerMode>(initial.layer)
   const mapLayerRef = useRef(mapLayer)
@@ -115,6 +120,10 @@ export default function App() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.statusText))))
       .then(setEovVocabulary)
       .catch(() => setEovVocabulary(null))
+    fetch('/api/countries')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.statusText))))
+      .then((data: CountriesResponse) => setCountryOptions(data.items ?? []))
+      .catch(() => setCountryOptions([]))
   }, [])
 
   useEffect(() => {
@@ -125,6 +134,7 @@ export default function App() {
       q: debouncedSearchQuery,
       status: programmeStatus,
       eov: selectedEovCategories,
+      country: selectedCountries,
       readiness: selectedReadiness,
       layer: mapLayer,
       colour: colorScheme,
@@ -140,6 +150,7 @@ export default function App() {
     debouncedSearchQuery,
     programmeStatus,
     selectedEovCategories,
+    selectedCountries,
     selectedReadiness,
     mapLayer,
     colorScheme,
@@ -166,6 +177,7 @@ export default function App() {
         setDebouncedSearchQuery,
         setProgrammeStatus,
         setSelectedEovCategories,
+        setSelectedCountries,
         setSelectedReadiness,
         setMapLayer,
         setColorScheme,
@@ -236,6 +248,9 @@ export default function App() {
             selectedEovCategories={selectedEovCategories}
             onEovCategoriesChange={setSelectedEovCategories}
             eovVocabulary={eovVocabulary}
+            countryOptions={countryOptions}
+            selectedCountries={selectedCountries}
+            onCountriesChange={setSelectedCountries}
             programmeStatus={programmeStatus}
             onProgrammeStatusChange={setProgrammeStatus}
             selectedReadiness={selectedReadiness}
@@ -267,6 +282,7 @@ export default function App() {
                 debouncedSearchQuery={debouncedSearchQuery}
                 eovCategories={selectedEovCategories}
                 eovVocabulary={eovVocabulary}
+                countries={selectedCountries}
                 programmeStatus={programmeStatus}
                 readiness={selectedReadiness}
               />
