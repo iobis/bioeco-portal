@@ -41,6 +41,7 @@ function applyParsedState(
     setProgrammeStatus: (v: PortalUrlState['status']) => void
     setSelectedEovCategories: (v: string[]) => void
     setSelectedReadiness: (v: PortalUrlState['readiness']) => void
+    setObisOnly: (v: boolean) => void
     setMapLayer: (v: MapLayerMode) => void
     setColorScheme: (v: ColorSchemeId) => void
     setGridOpacity: (v: number) => void
@@ -57,6 +58,7 @@ function applyParsedState(
   setters.setProgrammeStatus(parsed.status)
   setters.setSelectedEovCategories(parsed.eov)
   setters.setSelectedReadiness(parsed.readiness)
+  setters.setObisOnly(parsed.obis)
   setters.setMapLayer(parsed.layer)
   setters.setColorScheme(parsed.colour)
   setters.setGridOpacity(parsed.opacity)
@@ -78,6 +80,7 @@ export default function App() {
   const [programmeStatus, setProgrammeStatus] = useState(initial.status)
   const [selectedEovCategories, setSelectedEovCategories] = useState(initial.eov)
   const [selectedReadiness, setSelectedReadiness] = useState(initial.readiness)
+  const [obisOnly, setObisOnly] = useState(initial.obis)
   const [mapLayer, setMapLayer] = useState<MapLayerMode>(initial.layer)
   const mapLayerRef = useRef(mapLayer)
   mapLayerRef.current = mapLayer
@@ -126,6 +129,7 @@ export default function App() {
       status: programmeStatus,
       eov: selectedEovCategories,
       readiness: selectedReadiness,
+      obis: obisOnly,
       layer: mapLayer,
       colour: colorScheme,
       opacity: gridOpacity,
@@ -141,6 +145,7 @@ export default function App() {
     programmeStatus,
     selectedEovCategories,
     selectedReadiness,
+    obisOnly,
     mapLayer,
     colorScheme,
     gridOpacity,
@@ -167,6 +172,7 @@ export default function App() {
         setProgrammeStatus,
         setSelectedEovCategories,
         setSelectedReadiness,
+        setObisOnly,
         setMapLayer,
         setColorScheme,
         setGridOpacity,
@@ -240,6 +246,8 @@ export default function App() {
             onProgrammeStatusChange={setProgrammeStatus}
             selectedReadiness={selectedReadiness}
             onReadinessChange={setSelectedReadiness}
+            obisOnly={obisOnly}
+            onObisOnlyChange={setObisOnly}
             mapLayer={mapLayer}
             onMapLayerChange={setMapLayer}
             colorScheme={colorScheme}
@@ -269,6 +277,7 @@ export default function App() {
                 eovVocabulary={eovVocabulary}
                 programmeStatus={programmeStatus}
                 readiness={selectedReadiness}
+                obisOnly={obisOnly}
               />
             </div>
           </aside>

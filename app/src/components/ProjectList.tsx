@@ -40,6 +40,8 @@ interface ProjectListProps {
   eovVocabulary?: EovVocabulary | null
   programmeStatus?: ProgrammeStatus
   readiness?: ReadinessSelection
+  /** Only programmes with linked OBIS datasets. */
+  obisOnly?: boolean
 }
 
 const PAGE_SIZE = 25
@@ -54,12 +56,14 @@ function appendProjectListParams(
     eovCategories,
     programmeStatus,
     readiness,
+    obisOnly,
   }: {
     searchQuery: string
     cellBbox: string | null
     eovCategories: string[]
     programmeStatus: ProgrammeStatus
     readiness: ReadinessSelection
+    obisOnly: boolean
   },
 ) {
   params.set('include_geometry', 'false')
@@ -68,6 +72,7 @@ function appendProjectListParams(
   if (eovCategories.length) params.set('eov_category', eovCategories.join(','))
   if (programmeStatus && programmeStatus !== 'all') params.set('status', programmeStatus)
   appendReadinessParams(params, readiness)
+  if (obisOnly) params.set('obis', 'true')
 }
 
 /** Group project EOVs by top-level category using vocabulary resolver; return entries with label and badge bg. */
@@ -100,6 +105,7 @@ export function ProjectList({
   eovVocabulary = null,
   programmeStatus = 'all',
   readiness = EMPTY_READINESS_SELECTION,
+  obisOnly = false,
 }: ProjectListProps) {
   const [items, setItems] = useState<Project[]>([])
   const [total, setTotal] = useState(0)
@@ -163,9 +169,10 @@ export function ProjectList({
       eovCategories,
       programmeStatus,
       readiness,
+      obisOnly,
     })
     return params.toString()
-  }, [debouncedSearchQuery, cellBbox, eovCategories, programmeStatus, readiness])
+  }, [debouncedSearchQuery, cellBbox, eovCategories, programmeStatus, readiness, obisOnly])
 
   useEffect(() => {
     pointerOverIdRef.current = null

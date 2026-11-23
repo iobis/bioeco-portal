@@ -10,6 +10,7 @@ from es_client import get_es_client
 from query_filters import (
     grid_text_search_query,
     normalize_status,
+    obis_filters,
     parse_readiness_levels,
     readiness_filters,
     status_filters,
@@ -28,6 +29,7 @@ def _build_mvt_query(
     readiness_data: Optional[list[int]] = None,
     readiness_requirements: Optional[list[int]] = None,
     readiness_coordination: Optional[list[int]] = None,
+    obis: bool = False,
 ) -> dict:
     filters = []
     if eov and eov.strip():
@@ -52,6 +54,7 @@ def _build_mvt_query(
             coordination=readiness_coordination,
         )
     )
+    filters.extend(obis_filters(obis))
     if not must and not filters:
         return {"match_all": {}}
     body: dict = {"bool": {}}
@@ -89,6 +92,10 @@ def get_projects_tile(
         None,
         description="GOOS readiness-coordination levels 1–9 (comma-separated)",
     ),
+    obis: bool = Query(
+        False,
+        description="Only programmes with OBIS datasets tagged with one of their identifiers",
+    ),
     es: Elasticsearch = Depends(get_es_client),
 ):
     """Return a Mapbox Vector Tile from Elasticsearch's native _mvt API (project_grid)."""
@@ -121,6 +128,7 @@ def get_projects_tile(
             readiness_data_levels,
             readiness_requirements_levels,
             readiness_coordination_levels,
+            obis,
         ),
         "grid_agg": "geotile",
         "grid_precision": 5,

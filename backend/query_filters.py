@@ -133,6 +133,16 @@ def readiness_filters(
     return filters
 
 
+def obis_filters(has_obis_data: bool = False) -> list[dict]:
+    """Only programmes with OBIS datasets tagged with one of their identifiers.
+
+    Works on both indices (the loader copies ``has_obis_data`` onto grid docs).
+    """
+    if not has_obis_data:
+        return []
+    return [{"term": {"has_obis_data": True}}]
+
+
 def status_filters(status: Optional[str], *, as_of_year: Optional[int] = None) -> list[dict]:
     """Return ES filter clauses for programme activity relative to a calendar year.
 

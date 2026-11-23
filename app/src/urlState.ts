@@ -25,6 +25,8 @@ export interface PortalUrlState {
   status: ProgrammeStatus
   eov: string[]
   readiness: ReadinessSelection
+  /** Only programmes with linked OBIS datasets, stored as `?obis=1`. */
+  obis: boolean
   layer: MapLayerMode
   colour: ColorSchemeId
   opacity: number
@@ -41,6 +43,7 @@ export const DEFAULT_URL_STATE: PortalUrlState = {
   status: 'all',
   eov: [],
   readiness: EMPTY_READINESS_SELECTION,
+  obis: false,
   layer: 'programmes',
   colour: 'hawaii',
   opacity: 0.4,
@@ -113,6 +116,7 @@ export function parseUrlState(search: string = window.location.search): PortalUr
     status: statusRaw && STATUSES.has(statusRaw) ? statusRaw : DEFAULT_URL_STATE.status,
     eov: parseCsv(params.get('eov')),
     readiness,
+    obis: parseBoolFlag(params.get('obis'), DEFAULT_URL_STATE.obis),
     layer: layerRaw && LAYERS.has(layerRaw) ? layerRaw : DEFAULT_URL_STATE.layer,
     colour: colourRaw && COLOURS.has(colourRaw) ? colourRaw : DEFAULT_URL_STATE.colour,
     opacity: parseOpacity(params.get('opacity')),
@@ -136,6 +140,7 @@ export function serializeUrlState(state: PortalUrlState): URLSearchParams {
     const levels = state.readiness[key]
     if (levels.length) params.set(param, [...levels].sort((a, b) => a - b).join(','))
   }
+  if (state.obis) params.set('obis', '1')
   if (state.layer !== d.layer) params.set('layer', state.layer)
   if (state.colour !== d.colour) params.set('colour', state.colour)
   if (state.opacity !== d.opacity) params.set('opacity', String(state.opacity))

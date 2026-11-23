@@ -9,6 +9,7 @@ from es_client import get_es_client
 from query_filters import (
     grid_text_search_query,
     normalize_status,
+    obis_filters,
     parse_readiness_levels,
     readiness_filters,
     status_filters,
@@ -39,6 +40,7 @@ def _build_projects_query(
     readiness_data: Optional[list[int]] = None,
     readiness_requirements: Optional[list[int]] = None,
     readiness_coordination: Optional[list[int]] = None,
+    obis: bool = False,
 ):
     must = []
     filters = []
@@ -68,6 +70,7 @@ def _build_projects_query(
             coordination=readiness_coordination,
         )
     )
+    filters.extend(obis_filters(obis))
 
     body = {"query": {"bool": {}}}
     if must:
@@ -93,6 +96,7 @@ def _build_grid_cell_query(
     readiness_data: Optional[list[int]] = None,
     readiness_requirements: Optional[list[int]] = None,
     readiness_coordination: Optional[list[int]] = None,
+    obis: bool = False,
 ) -> dict:
     """Filters aligned with map tiles so cell counts match the programme list."""
     filters = [
@@ -127,6 +131,7 @@ def _build_grid_cell_query(
             coordination=readiness_coordination,
         )
     )
+    filters.extend(obis_filters(obis))
     bool_query: dict = {"filter": filters}
     if must:
         bool_query["must"] = must
@@ -145,6 +150,7 @@ def _project_ids_for_cell(
     readiness_data: Optional[list[int]] = None,
     readiness_requirements: Optional[list[int]] = None,
     readiness_coordination: Optional[list[int]] = None,
+    obis: bool = False,
 ) -> list[str]:
     min_lon, min_lat, max_lon, max_lat = _parse_bbox(bbox)
     body = {
@@ -163,6 +169,7 @@ def _project_ids_for_cell(
             readiness_data=readiness_data,
             readiness_requirements=readiness_requirements,
             readiness_coordination=readiness_coordination,
+            obis=obis,
         ),
         "aggs": {
             "ids": {
@@ -197,6 +204,10 @@ def list_projects(
     readiness_coordination: Optional[str] = Query(
         None,
         description="GOOS readiness-coordination levels 1–9 (comma-separated)",
+    ),
+    obis: bool = Query(
+        False,
+        description="Only programmes with OBIS datasets tagged with one of their identifiers",
     ),
     bbox: Optional[str] = Query(None, description="Bounding box: min_lon,min_lat,max_lon,max_lat"),
     include_geometry: bool = Query(False, description="Include geometry in each project item"),
@@ -235,6 +246,7 @@ def list_projects(
                     readiness_data=readiness_data_levels,
                     readiness_requirements=readiness_requirements_levels,
                     readiness_coordination=readiness_coordination_levels,
+                    obis=obis,
                 )
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=f"Invalid bbox: {e}") from e
@@ -256,9 +268,10 @@ def list_projects(
                 readiness_data=readiness_data_levels,
                 readiness_requirements=readiness_requirements_levels,
                 readiness_coordination=readiness_coordination_levels,
+                obis=obis,
             )
 
-        searching = bool(name and name.strip())
+        searching =bool(name and name.strip())
         body = {
             **query_body,
             "from": from_,
