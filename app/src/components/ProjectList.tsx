@@ -229,6 +229,17 @@ export function ProjectList({
     return response.json()
   }, [listParams])
 
+  // Unfiltered programme count for "X of Y programmes" (one small request on load).
+  const [overallTotal, setOverallTotal] = useState<number | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/projects?size=1&include_geometry=false', { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.statusText))))
+      .then((data: ProjectsResponse) => setOverallTotal(data.total ?? null))
+      .catch(() => {})
+    return () => controller.abort()
+  }, [])
+
   useEffect(() => {
     const requestId = ++requestIdRef.current
     const controller = new AbortController()
@@ -323,19 +334,36 @@ export function ProjectList({
           onChange={(e) => onSearchQueryChange?.(e.target.value)}
           aria-label="Search programmes"
         />
-        {onObisOnlyChange && (
-          <label
-            className="map-eov-toggle panel-obis-toggle"
-            title="Programmes with datasets in OBIS tagged with one of the programme's identifiers"
-          >
-            <input
-              type="checkbox"
-              checked={obisOnly}
-              onChange={(e) => onObisOnlyChange(e.target.checked)}
-            />
-            <span>Only programmes with OBIS data</span>
-          </label>
-        )}
+        <div className="panel-list-meta">
+          {onObisOnlyChange && (
+            <label
+              className="map-eov-toggle panel-obis-toggle"
+              title="Programmes with datasets in OBIS tagged with one of the programme's identifiers"
+            >
+              <input
+                type="checkbox"
+                checked={obisOnly}
+                onChange={(e) => onObisOnlyChange(e.target.checked)}
+              />
+              <span>Only programmes with OBIS data</span>
+            </label>
+          )}
+          {!error && (
+            <span className="panel-list-count" aria-live="polite">
+              {loading ? (
+                '…'
+              ) : (
+                <>
+                  <strong>{total.toLocaleString()}</strong>
+                  {overallTotal != null && overallTotal !== total
+                    ? ` of ${overallTotal.toLocaleString()}`
+                    : ''}{' '}
+                  programme{(overallTotal ?? total) === 1 ? '' : 's'}
+                </>
+              )}
+            </span>
+          )}
+        </div>
       </div>
       {loading && <p className="list-message">Loading projects…</p>}
       {error && !items.length && <p className="list-message list-error">Error: {error}</p>}
