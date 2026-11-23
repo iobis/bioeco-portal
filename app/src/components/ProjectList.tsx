@@ -40,6 +40,9 @@ interface ProjectListProps {
   eovVocabulary?: EovVocabulary | null
   programmeStatus?: ProgrammeStatus
   readiness?: ReadinessSelection
+  /** Only programmes with linked OBIS datasets. */
+  obisOnly?: boolean
+  onObisOnlyChange?: (obisOnly: boolean) => void
 }
 
 const PAGE_SIZE = 25
@@ -54,12 +57,14 @@ function appendProjectListParams(
     eovCategories,
     programmeStatus,
     readiness,
+    obisOnly,
   }: {
     searchQuery: string
     cellBbox: string | null
     eovCategories: string[]
     programmeStatus: ProgrammeStatus
     readiness: ReadinessSelection
+    obisOnly: boolean
   },
 ) {
   params.set('include_geometry', 'false')
@@ -68,6 +73,7 @@ function appendProjectListParams(
   if (eovCategories.length) params.set('eov_category', eovCategories.join(','))
   if (programmeStatus && programmeStatus !== 'all') params.set('status', programmeStatus)
   appendReadinessParams(params, readiness)
+  if (obisOnly) params.set('obis', 'true')
 }
 
 /** Group project EOVs by top-level category using vocabulary resolver; return entries with label and badge bg. */
@@ -100,6 +106,8 @@ export function ProjectList({
   eovVocabulary = null,
   programmeStatus = 'all',
   readiness = EMPTY_READINESS_SELECTION,
+  obisOnly = false,
+  onObisOnlyChange,
 }: ProjectListProps) {
   const [items, setItems] = useState<Project[]>([])
   const [total, setTotal] = useState(0)
@@ -163,9 +171,10 @@ export function ProjectList({
       eovCategories,
       programmeStatus,
       readiness,
+      obisOnly,
     })
     return params.toString()
-  }, [debouncedSearchQuery, cellBbox, eovCategories, programmeStatus, readiness])
+  }, [debouncedSearchQuery, cellBbox, eovCategories, programmeStatus, readiness, obisOnly])
 
   useEffect(() => {
     pointerOverIdRef.current = null
@@ -219,6 +228,17 @@ export function ProjectList({
     if (!response.ok) throw new Error(response.statusText)
     return response.json()
   }, [listParams])
+
+  // Unfiltered programme count for "X of Y programmes" (one small request on load).
+  const [overallTotal, setOverallTotal] = useState<number | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/projects?size=1&include_geometry=false', { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.statusText))))
+      .then((data: ProjectsResponse) => setOverallTotal(data.total ?? null))
+      .catch(() => {})
+    return () => controller.abort()
+  }, [])
 
   useEffect(() => {
     const requestId = ++requestIdRef.current
@@ -314,6 +334,36 @@ export function ProjectList({
           onChange={(e) => onSearchQueryChange?.(e.target.value)}
           aria-label="Search programmes"
         />
+        <div className="panel-list-meta">
+          {onObisOnlyChange && (
+            <label
+              className="map-eov-toggle panel-obis-toggle"
+              title="Programmes with datasets in OBIS tagged with one of the programme's identifiers"
+            >
+              <input
+                type="checkbox"
+                checked={obisOnly}
+                onChange={(e) => onObisOnlyChange(e.target.checked)}
+              />
+              <span>Only programmes with OBIS data</span>
+            </label>
+          )}
+          {!error && (
+            <span className="panel-list-count" aria-live="polite">
+              {loading ? (
+                '…'
+              ) : (
+                <>
+                  <strong>{total.toLocaleString()}</strong>
+                  {overallTotal != null && overallTotal !== total
+                    ? ` of ${overallTotal.toLocaleString()}`
+                    : ''}{' '}
+                  programme{(overallTotal ?? total) === 1 ? '' : 's'}
+                </>
+              )}
+            </span>
+          )}
+        </div>
       </div>
       {loading && <p className="list-message">Loading projects…</p>}
       {error && !items.length && <p className="list-message list-error">Error: {error}</p>}

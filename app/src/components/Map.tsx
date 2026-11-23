@@ -200,6 +200,8 @@ interface MapProps {
   onProgrammeStatusChange?: (status: ProgrammeStatus) => void
   selectedReadiness?: ReadinessSelection
   onReadinessChange?: (selection: ReadinessSelection) => void
+  /** Only programmes with linked OBIS datasets (filters the programme tiles). */
+  obisOnly?: boolean
   mapLayer?: MapLayerMode
   onMapLayerChange?: (layer: MapLayerMode) => void
   colorScheme?: ColorSchemeId
@@ -227,6 +229,7 @@ export function Map({
   onProgrammeStatusChange,
   selectedReadiness = EMPTY_READINESS_SELECTION,
   onReadinessChange,
+  obisOnly = false,
   mapLayer = 'programmes',
   onMapLayerChange,
   colorScheme = 'hawaii',
@@ -599,10 +602,11 @@ export function Map({
     const eovCat = selectedEovCategories.length ? selectedEovCategories.join(',') : ''
     const statusKey = programmeStatus === 'all' ? '' : programmeStatus
     const readinessKey = readinessSelectionKey(selectedReadiness)
-    const tileKey = `${eovCat}|${statusKey}|${readinessKey}`
+    const obisKey = obisOnly ? 'obis' : ''
+    const tileKey = `${eovCat}|${statusKey}|${readinessKey}|${obisKey}`
     if (lastAppliedSearchRef.current === tileKey) return
     // Avoid replacing the source on initial load when we have no filters – the style already has project-tiles.
-    if (!eovCat && !statusKey && !readinessKey && lastAppliedSearchRef.current === undefined) {
+    if (!eovCat && !statusKey && !readinessKey && !obisKey && lastAppliedSearchRef.current === undefined) {
       lastAppliedSearchRef.current = tileKey
       return
     }
@@ -613,6 +617,7 @@ export function Map({
     if (eovCat) params.set('eov_category', eovCat)
     if (statusKey) params.set('status', statusKey)
     appendReadinessParams(params, selectedReadiness)
+    if (obisKey) params.set('obis', 'true')
     const queryString = params.toString()
     const tileUrl = `${origin}/api/tiles/projects/{z}/{x}/{y}.mvt${queryString ? `?${queryString}` : ''}`
 
@@ -677,7 +682,7 @@ export function Map({
         map.setLayoutProperty('project-grid-labels', 'visibility', 'none')
       }
     }
-  }, [selectedEovCategories, programmeStatus, selectedReadiness, mapReady])
+  }, [selectedEovCategories, programmeStatus, selectedReadiness, obisOnly, mapReady])
 
   useEffect(() => {
     const map = mapRef.current

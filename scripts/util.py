@@ -52,6 +52,82 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "data"
 
 
+# OBIS link: datasets in OBIS tagged with one of the programme's HTTP(S)
+# identifiers (the same lookup the programme dialog makes in the browser).
+OBIS_FIELD_MAPPINGS = {
+    "has_obis_data": {"type": "boolean"},
+    "obis_dataset_count": {"type": "integer"},
+}
+OBIS_DATASET_API = "https://api.obis.org/dataset"
+
+def obis_identifier_tags(identifiers: list | None) -> list[str]:
+    """HTTP(S) identifier values OBIS can match as dataset tags (sorted, unique)."""
+    tags: set[str] = set()
+    for ident in identifiers or []:
+        if not isinstance(ident, dict):
+            continue
+        for key in ("url", "value"):
+            value = str(ident.get(key) or "").strip()
+            if value.lower().startswith(("http://", "https://")):
+                tags.add(value)
+    return sorted(tags)
+
+
+# Tags per OBIS request; keeps the URL short. Today all identifiers fit in one.
+_OBIS_TAGS_PER_REQUEST = 50
+_OBIS_PAGE_SIZE = 10000
+
+
+def fetch_obis_datasets_by_tag(tags: list[str]) -> dict[str, set[str]] | None:
+    """OBIS dataset ids for each tag, from as few requests as possible.
+
+    The OBIS API ORs comma-separated tags, so one request returns every dataset
+    tagged with any programme identifier; datasets are matched back to tags
+    locally. Returns None if OBIS is unreachable, so callers can leave the OBIS
+    fields off instead of marking every programme as having no data.
+    """
+    import urllib.parse
+    import urllib.request
+
+    wanted = sorted(set(tags))
+    by_tag: dict[str, set[str]] = {tag: set() for tag in wanted}
+    for start in range(0, len(wanted), _OBIS_TAGS_PER_REQUEST):
+        chunk = wanted[start : start + _OBIS_TAGS_PER_REQUEST]
+        query = urllib.parse.urlencode({"tags": ",".join(chunk), "size": _OBIS_PAGE_SIZE})
+        try:
+            with urllib.request.urlopen(f"{OBIS_DATASET_API}?{query}", timeout=120) as resp:
+                body = json.load(resp)
+        except Exception as e:
+            log_colored("WARN", "OBIS", f"OBIS dataset lookup failed: {e}")
+            return None
+        results = body.get("results") or []
+        if int(body.get("total") or 0) > len(results):
+            log_colored(
+                "WARN",
+                "OBIS",
+                f"OBIS returned {len(results)} of {body.get('total')} datasets; counts may be low",
+            )
+        for dataset in results:
+            for tag in dataset.get("tags") or []:
+                if tag in by_tag:
+                    by_tag[tag].add(dataset["id"])
+    linked = sum(1 for ids in by_tag.values() if ids)
+    log_colored("OK", "OBIS", f"{linked} of {len(wanted)} identifiers have OBIS datasets")
+    return by_tag
+
+
+def _binding_identifier_tags(binding: dict) -> list[str]:
+    """``obis_identifier_tags`` for a raw binding (identifiers still a JSON string)."""
+    raw = (binding.get("identifiers") or {}).get("value")
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    return obis_identifier_tags(parsed if isinstance(parsed, list) else None)
+
+
 def ensure_indices(client, clear_indexes: bool = False):
     """Create indices and mappings. Optionally clear existing indices first."""
     project_mapping = {
@@ -131,7 +207,8 @@ def ensure_indices(client, clear_indexes: bool = False):
                         "url": {"type": "keyword"}
                     }
                 },
-                "geometry": {"type": "geo_shape"}
+                "geometry": {"type": "geo_shape"},
+                **OBIS_FIELD_MAPPINGS,
             }
         }
     }
@@ -148,7 +225,8 @@ def ensure_indices(client, clear_indexes: bool = False):
                 "readiness_coordination": {"type": "keyword"},
                 "start_year": {"type": "integer"},
                 "end_year": {"type": "integer"},
-                "geometry": {"type": "geo_point"}
+                "geometry": {"type": "geo_point"},
+                "has_obis_data": OBIS_FIELD_MAPPINGS["has_obis_data"],
             }
         }
     }
@@ -225,6 +303,22 @@ def ensure_indices(client, clear_indexes: bool = False):
                     e,
                 )
 
+    # OBIS fields were added after the first deployments; add them to existing
+    # indices so they get explicit types instead of dynamic mapping.
+    for index, mapping in ((project_index, project_mapping), (grid_index, grid_mapping)):
+        if not client.indices.exists(index=index):
+            continue
+        props = mapping["mappings"]["properties"]
+        obis_props = {k: props[k] for k in props if k in OBIS_FIELD_MAPPINGS}
+        try:
+            client.indices.put_mapping(index=index, body={"properties": obis_props})
+        except Exception as e:
+            logging.warning(
+                "Could not add OBIS fields to %s mapping "
+                "(re-run with --clear-indexes): %s",
+                index,
+                e,
+            )
     # Keep import_run history across --clear-indexes (project/grid rebuilds).
     if not client.indices.exists(index=import_run_index):
         logging.info("Creating index %s with mapping", import_run_index)
@@ -1015,9 +1109,16 @@ def index_project_bindings(
         "projects_removed": 0,
         "temporal_coverage_removed": 0,
         "geometry_normalized": 0,
+        "projects_with_obis_data": 0,
+        "projects_obis_unchecked": 0,
         "not_indexed_files": set(),
     }
     active_project_ids: set[str] = set()
+
+    # One OBIS request for every programme identifier, up front.
+    all_obis_tags = {tag for b in results_bindings for tag in _binding_identifier_tags(b)}
+    obis_by_tag = fetch_obis_datasets_by_tag(sorted(all_obis_tags)) if all_obis_tags else {}
+
     for i, result in enumerate(results["results"]["bindings"]):
         project = {k: v["value"] for k, v in result.items()}
 
@@ -1247,6 +1348,20 @@ def index_project_bindings(
                 outer_geohashes_polygon = polygon_to_geohashes(poly, 4, False)
                 cells.extend(outer_geohashes_polygon)
 
+        # OBIS datasets linked through the programme's identifiers. A failed
+        # lookup leaves the fields off rather than marking the programme as
+        # having no OBIS data.
+        if obis_by_tag is None:
+            stats["projects_obis_unchecked"] += 1
+        else:
+            dataset_ids: set[str] = set()
+            for tag in obis_identifier_tags(project.get("identifiers")):
+                dataset_ids |= obis_by_tag.get(tag, set())
+            project["obis_dataset_count"] = len(dataset_ids)
+            project["has_obis_data"] = bool(dataset_ids)
+            if dataset_ids:
+                stats["projects_with_obis_data"] += 1
+
         indexed_ok = False
         try:
             client.index(index=project_index, id=project["id"], document=project)
@@ -1295,6 +1410,7 @@ def index_project_bindings(
                         "readiness_coordination": project.get("readiness_coordination"),
                         "start_year": project.get("start_year"),
                         "end_year": project.get("end_year"),
+                        "has_obis_data": project.get("has_obis_data", False),
                         "geometry": (lon, lat),
                     }
                     actions.append(
@@ -1351,6 +1467,9 @@ def log_index_summary(stats: dict) -> None:
         log_colored("WARN", "SUMMARY", f"geometry_normalized: {stats['geometry_normalized']}")
     else:
         log_colored("OK", "SUMMARY", "geometry_normalized: 0")
+    log_colored("OK", "SUMMARY", f"projects_with_obis_data: {stats.get('projects_with_obis_data', 0)}")
+    if stats.get("projects_obis_unchecked"):
+        log_colored("WARN", "SUMMARY", f"projects_obis_unchecked: {stats['projects_obis_unchecked']}")
     log_colored("OK", "SUMMARY", f"grid_docs_indexed: {stats['grid_docs_indexed']}")
     if stats.get("grid_docs_removed"):
         log_colored("INFO", "SUMMARY", f"grid_docs_removed: {stats['grid_docs_removed']}")
