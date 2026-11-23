@@ -1,4 +1,5 @@
 import type { ProgrammeStatus } from './programmeStatus'
+import { appendAreaParams } from './countries'
 import {
   EMPTY_READINESS_SELECTION,
   READINESS_DIMENSIONS,
@@ -24,6 +25,8 @@ export interface PortalUrlState {
   q: string
   status: ProgrammeStatus
   eov: string[]
+  /** Area filter ids (e.g. `canada-north-atlantic`), stored as `?area=`. */
+  area: string[]
   readiness: ReadinessSelection
   layer: MapLayerMode
   colour: ColorSchemeId
@@ -40,6 +43,7 @@ export const DEFAULT_URL_STATE: PortalUrlState = {
   q: '',
   status: 'all',
   eov: [],
+  area: [],
   readiness: EMPTY_READINESS_SELECTION,
   layer: 'programmes',
   colour: 'hawaii',
@@ -68,6 +72,13 @@ function parseReadinessLevels(value: string | null): number[] {
     .map((part) => Number(part))
     .filter((n) => Number.isInteger(n) && VALID_LEVELS.has(n))
   return [...new Set(levels)].sort((a, b) => a - b)
+}
+
+function parseAreas(value: string | null): string[] {
+  const ids = parseCsv(value)
+    .map((part) => part.toLowerCase())
+    .filter((id) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(id))
+  return [...new Set(ids)]
 }
 
 function parseOpacity(value: string | null): number {
@@ -112,6 +123,7 @@ export function parseUrlState(search: string = window.location.search): PortalUr
     q: params.get('q')?.trim() ?? '',
     status: statusRaw && STATUSES.has(statusRaw) ? statusRaw : DEFAULT_URL_STATE.status,
     eov: parseCsv(params.get('eov')),
+    area: parseAreas(params.get('area')),
     readiness,
     layer: layerRaw && LAYERS.has(layerRaw) ? layerRaw : DEFAULT_URL_STATE.layer,
     colour: colourRaw && COLOURS.has(colourRaw) ? colourRaw : DEFAULT_URL_STATE.colour,
@@ -132,6 +144,7 @@ export function serializeUrlState(state: PortalUrlState): URLSearchParams {
   if (state.q.trim()) params.set('q', state.q.trim())
   if (state.status !== d.status) params.set('status', state.status)
   if (state.eov.length) params.set('eov', state.eov.join(','))
+  appendAreaParams(params, state.area)
   for (const { key, param } of READINESS_DIMENSIONS) {
     const levels = state.readiness[key]
     if (levels.length) params.set(param, [...levels].sort((a, b) => a - b).join(','))

@@ -9,8 +9,11 @@ from es_client import get_es_client
 from query_filters import (
     grid_text_search_query,
     normalize_status,
+    parse_region_selection,
     parse_readiness_levels,
     readiness_filters,
+    region_filters,
+    RegionSelection,
     status_filters,
     text_search_query,
 )
@@ -39,6 +42,7 @@ def _build_projects_query(
     readiness_data: Optional[list[int]] = None,
     readiness_requirements: Optional[list[int]] = None,
     readiness_coordination: Optional[list[int]] = None,
+    region: Optional[RegionSelection] = None,
 ):
     must = []
     filters = []
@@ -68,6 +72,7 @@ def _build_projects_query(
             coordination=readiness_coordination,
         )
     )
+    filters.extend(region_filters(region))
 
     body = {"query": {"bool": {}}}
     if must:
@@ -93,6 +98,7 @@ def _build_grid_cell_query(
     readiness_data: Optional[list[int]] = None,
     readiness_requirements: Optional[list[int]] = None,
     readiness_coordination: Optional[list[int]] = None,
+    region: Optional[RegionSelection] = None,
 ) -> dict:
     """Filters aligned with map tiles so cell counts match the programme list."""
     filters = [
@@ -127,6 +133,7 @@ def _build_grid_cell_query(
             coordination=readiness_coordination,
         )
     )
+    filters.extend(region_filters(region))
     bool_query: dict = {"filter": filters}
     if must:
         bool_query["must"] = must
@@ -145,6 +152,7 @@ def _project_ids_for_cell(
     readiness_data: Optional[list[int]] = None,
     readiness_requirements: Optional[list[int]] = None,
     readiness_coordination: Optional[list[int]] = None,
+    region: Optional[RegionSelection] = None,
 ) -> list[str]:
     min_lon, min_lat, max_lon, max_lat = _parse_bbox(bbox)
     body = {
@@ -163,6 +171,7 @@ def _project_ids_for_cell(
             readiness_data=readiness_data,
             readiness_requirements=readiness_requirements,
             readiness_coordination=readiness_coordination,
+            region=region,
         ),
         "aggs": {
             "ids": {
@@ -198,6 +207,14 @@ def list_projects(
         None,
         description="GOOS readiness-coordination levels 1–9 (comma-separated)",
     ),
+    area: Optional[str] = Query(
+        None,
+        description=(
+            "Area ids from /api/countries (comma-separated), e.g. canada-north-atlantic, "
+            "united-kingdom-all, abnj. Matches programmes with data in any selected area; "
+            "whole-country areas also match programmes declaring the country (schema:country)."
+        ),
+    ),
     bbox: Optional[str] = Query(None, description="Bounding box: min_lon,min_lat,max_lon,max_lat"),
     include_geometry: bool = Query(False, description="Include geometry in each project item"),
     from_: int = Query(0, alias="from", ge=0),
@@ -215,6 +232,7 @@ def list_projects(
         readiness_data_levels = parse_readiness_levels(readiness_data)
         readiness_requirements_levels = parse_readiness_levels(readiness_requirements)
         readiness_coordination_levels = parse_readiness_levels(readiness_coordination)
+        region_sel = parse_region_selection(area)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -235,6 +253,7 @@ def list_projects(
                     readiness_data=readiness_data_levels,
                     readiness_requirements=readiness_requirements_levels,
                     readiness_coordination=readiness_coordination_levels,
+                    region=region_sel,
                 )
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=f"Invalid bbox: {e}") from e
@@ -256,6 +275,7 @@ def list_projects(
                 readiness_data=readiness_data_levels,
                 readiness_requirements=readiness_requirements_levels,
                 readiness_coordination=readiness_coordination_levels,
+                region=region_sel,
             )
 
         searching = bool(name and name.strip())

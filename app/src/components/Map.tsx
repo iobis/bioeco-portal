@@ -12,6 +12,12 @@ import {
 } from '../timeRange'
 import type { ColorSchemeId, MapLayerMode } from '../urlState'
 import { TimeRangeSlider } from './TimeRangeSlider'
+import { AreaFilter } from './CountryFilter'
+import {
+  appendAreaParams,
+  areaSelectionKey,
+  type AreaOption,
+} from '../countries'
 import {
   EMPTY_READINESS_SELECTION,
   READINESS_DIMENSIONS,
@@ -189,6 +195,19 @@ export function bboxToString(bbox: [number, number, number, number]): string {
   return bbox.join(',')
 }
 
+/**
+ * Map bounds for a `[west, south, east, north]` box from the API. When the box
+ * crosses the antimeridian (west > east) the east edge is shifted by 360° so
+ * MapLibre fits the narrow box instead of the whole world.
+ */
+
+function bboxToLngLatBounds([west, south, east, north]: [number, number, number, number]): maplibregl.LngLatBoundsLike {
+  return [
+    [west, south],
+    [east < west ? east + 360 : east, north],
+  ]
+}
+
 interface MapProps {
   hoveredProjectId?: string | null
   selectedCellBbox?: string | null
@@ -196,6 +215,9 @@ interface MapProps {
   selectedEovCategories?: string[]
   onEovCategoriesChange?: (keys: string[]) => void
   eovVocabulary?: EovVocabulary | null
+  areaOptions?: AreaOption[]
+  selectedAreas?: string[]
+  onAreasChange?: (ids: string[]) => void
   programmeStatus?: ProgrammeStatus
   onProgrammeStatusChange?: (status: ProgrammeStatus) => void
   selectedReadiness?: ReadinessSelection
@@ -223,6 +245,9 @@ export function Map({
   selectedEovCategories = [],
   onEovCategoriesChange,
   eovVocabulary = null,
+  areaOptions = [],
+  selectedAreas = [],
+  onAreasChange,
   programmeStatus = 'all',
   onProgrammeStatusChange,
   selectedReadiness = EMPTY_READINESS_SELECTION,
@@ -267,6 +292,7 @@ export function Map({
   hoveredIdRef.current = hoveredProjectId ?? null
   selectedCellBboxRef.current = selectedCellBbox ?? null
   const isDataLayer = mapLayer === 'data'
+  const areaKey = areaSelectionKey(selectedAreas)
   const gridMetric: GridMetric = mapLayer === 'eovs' ? 'eovs' : 'programmes'
 
   useEffect(() => {
@@ -599,10 +625,16 @@ export function Map({
     const eovCat = selectedEovCategories.length ? selectedEovCategories.join(',') : ''
     const statusKey = programmeStatus === 'all' ? '' : programmeStatus
     const readinessKey = readinessSelectionKey(selectedReadiness)
-    const tileKey = `${eovCat}|${statusKey}|${readinessKey}`
+    const tileKey = `${eovCat}|${statusKey}|${readinessKey}|${areaKey}`
     if (lastAppliedSearchRef.current === tileKey) return
     // Avoid replacing the source on initial load when we have no filters – the style already has project-tiles.
-    if (!eovCat && !statusKey && !readinessKey && lastAppliedSearchRef.current === undefined) {
+    if (
+      !eovCat &&
+      !statusKey &&
+      !readinessKey &&
+      !areaKey &&
+      lastAppliedSearchRef.current === undefined
+    ) {
       lastAppliedSearchRef.current = tileKey
       return
     }
@@ -613,6 +645,7 @@ export function Map({
     if (eovCat) params.set('eov_category', eovCat)
     if (statusKey) params.set('status', statusKey)
     appendReadinessParams(params, selectedReadiness)
+    appendAreaParams(params, areaKey ? areaKey.split(',') : [])
     const queryString = params.toString()
     const tileUrl = `${origin}/api/tiles/projects/{z}/{x}/{y}.mvt${queryString ? `?${queryString}` : ''}`
 
@@ -677,7 +710,27 @@ export function Map({
         map.setLayoutProperty('project-grid-labels', 'visibility', 'none')
       }
     }
-  }, [selectedEovCategories, programmeStatus, selectedReadiness, mapReady])
+  }, [selectedEovCategories, programmeStatus, selectedReadiness, areaKey, mapReady])
+
+  // Zoom to the programme data inside the selected areas. Boundary
+  // lines are deliberately not drawn: only the data inside the selection shows.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady || !areaKey) return
+
+    const controller = new AbortController()
+    const params = new URLSearchParams()
+    appendAreaParams(params, areaKey.split(','))
+    fetch(`/api/countries/bounds?${params.toString()}`, { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.statusText))))
+      .then((data: { bbox: [number, number, number, number] | null }) => {
+        if (controller.signal.aborted || !data.bbox) return
+        map.fitBounds(bboxToLngLatBounds(data.bbox), { padding: 48, maxZoom: 6, duration: 800 })
+      })
+      .catch(() => {})
+
+    return () => controller.abort()
+  }, [areaKey, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
@@ -938,6 +991,27 @@ export function Map({
             >
               Showing datasets linked to {obisProgrammeFilter.name}, click to clear.
             </button>
+          </div>
+        ) : null}
+        {!isDataLayer && onAreasChange && areaOptions.length ? (
+          <div className="map-filter-section" data-tour="country-filter">
+            <span className="map-eov-widget-title">
+              Country / area
+              {selectedAreas.length ? (
+                <button
+                  type="button"
+                  className="map-filter-clear"
+                  onClick={() => onAreasChange([])}
+                >
+                  Clear
+                </button>
+              ) : null}
+            </span>
+            <AreaFilter
+              areas={areaOptions}
+              selected={selectedAreas}
+              onChange={onAreasChange}
+            />
           </div>
         ) : null}
         {onEovCategoriesChange && eovVocabulary?.top_level_eovs?.length ? (

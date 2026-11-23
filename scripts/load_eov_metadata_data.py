@@ -28,6 +28,7 @@ from util import (
     build_eov_by_id,
     create_es_client,
     ensure_indices,
+    extract_countries,
     extract_identifiers,
     extract_publishing_principles,
     extract_wkt,
@@ -343,6 +344,10 @@ def build_bindings_from_eov_app_graph(
                 b["maintenance_frequency"] = {"value": value_ap}
         if ap_pairs:
             b["additional_properties"] = {"value": "||".join(ap_pairs)}
+
+        countries = extract_countries(node)
+        if countries:
+            b["declared_countries"] = {"value": json.dumps(countries)}
 
         wkt_val = extract_wkt(node)
         if wkt_val:

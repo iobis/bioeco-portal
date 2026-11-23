@@ -10,8 +10,11 @@ from es_client import get_es_client
 from query_filters import (
     grid_text_search_query,
     normalize_status,
+    parse_region_selection,
     parse_readiness_levels,
     readiness_filters,
+    region_filters,
+    RegionSelection,
     status_filters,
 )
 
@@ -28,6 +31,7 @@ def _build_mvt_query(
     readiness_data: Optional[list[int]] = None,
     readiness_requirements: Optional[list[int]] = None,
     readiness_coordination: Optional[list[int]] = None,
+    region: Optional[RegionSelection] = None,
 ) -> dict:
     filters = []
     if eov and eov.strip():
@@ -52,6 +56,7 @@ def _build_mvt_query(
             coordination=readiness_coordination,
         )
     )
+    filters.extend(region_filters(region))
     if not must and not filters:
         return {"match_all": {}}
     body: dict = {"bool": {}}
@@ -89,6 +94,14 @@ def get_projects_tile(
         None,
         description="GOOS readiness-coordination levels 1–9 (comma-separated)",
     ),
+    area: Optional[str] = Query(
+        None,
+        description=(
+            "Area ids from /api/countries (comma-separated), e.g. canada-north-atlantic, "
+            "united-kingdom-all, abnj. Matches programmes with data in any selected area; "
+            "whole-country areas also match programmes declaring the country (schema:country)."
+        ),
+    ),
     es: Elasticsearch = Depends(get_es_client),
 ):
     """Return a Mapbox Vector Tile from Elasticsearch's native _mvt API (project_grid)."""
@@ -107,6 +120,7 @@ def get_projects_tile(
         readiness_data_levels = parse_readiness_levels(readiness_data)
         readiness_requirements_levels = parse_readiness_levels(readiness_requirements)
         readiness_coordination_levels = parse_readiness_levels(readiness_coordination)
+        region_sel = parse_region_selection(area)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -121,6 +135,7 @@ def get_projects_tile(
             readiness_data_levels,
             readiness_requirements_levels,
             readiness_coordination_levels,
+            region_sel,
         ),
         "grid_agg": "geotile",
         "grid_precision": 5,
