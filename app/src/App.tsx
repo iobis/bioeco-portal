@@ -247,7 +247,6 @@ export default function App() {
             selectedReadiness={selectedReadiness}
             onReadinessChange={setSelectedReadiness}
             obisOnly={obisOnly}
-            onObisOnlyChange={setObisOnly}
             mapLayer={mapLayer}
             onMapLayerChange={setMapLayer}
             colorScheme={colorScheme}
@@ -278,6 +277,7 @@ export default function App() {
                 programmeStatus={programmeStatus}
                 readiness={selectedReadiness}
                 obisOnly={obisOnly}
+                onObisOnlyChange={setObisOnly}
               />
             </div>
           </aside>

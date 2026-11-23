@@ -42,6 +42,7 @@ interface ProjectListProps {
   readiness?: ReadinessSelection
   /** Only programmes with linked OBIS datasets. */
   obisOnly?: boolean
+  onObisOnlyChange?: (obisOnly: boolean) => void
 }
 
 const PAGE_SIZE = 25
@@ -106,6 +107,7 @@ export function ProjectList({
   programmeStatus = 'all',
   readiness = EMPTY_READINESS_SELECTION,
   obisOnly = false,
+  onObisOnlyChange,
 }: ProjectListProps) {
   const [items, setItems] = useState<Project[]>([])
   const [total, setTotal] = useState(0)
@@ -321,6 +323,19 @@ export function ProjectList({
           onChange={(e) => onSearchQueryChange?.(e.target.value)}
           aria-label="Search programmes"
         />
+        {onObisOnlyChange && (
+          <label
+            className="map-eov-toggle panel-obis-toggle"
+            title="Programmes with datasets in OBIS tagged with one of the programme's identifiers"
+          >
+            <input
+              type="checkbox"
+              checked={obisOnly}
+              onChange={(e) => onObisOnlyChange(e.target.checked)}
+            />
+            <span>Only programmes with OBIS data</span>
+          </label>
+        )}
       </div>
       {loading && <p className="list-message">Loading projects…</p>}
       {error && !items.length && <p className="list-message list-error">Error: {error}</p>}

@@ -814,6 +814,13 @@ a.project-card-link {
   user-select: none;
 }
 
+/* "Only programmes with OBIS data" under the programme search box */
+.panel-obis-toggle {
+  align-self: flex-start;
+  padding: 0 2px;
+  color: var(--muted);
+}
+
 /* Map legend – card style, right of sidebar (320px + 16px gap) */
 .map-legend {
   position: absolute;

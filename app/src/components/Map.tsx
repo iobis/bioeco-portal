@@ -200,9 +200,8 @@ interface MapProps {
   onProgrammeStatusChange?: (status: ProgrammeStatus) => void
   selectedReadiness?: ReadinessSelection
   onReadinessChange?: (selection: ReadinessSelection) => void
-  /** Only programmes with linked OBIS datasets. */
+  /** Only programmes with linked OBIS datasets (filters the programme tiles). */
   obisOnly?: boolean
-  onObisOnlyChange?: (obisOnly: boolean) => void
   mapLayer?: MapLayerMode
   onMapLayerChange?: (layer: MapLayerMode) => void
   colorScheme?: ColorSchemeId
@@ -231,7 +230,6 @@ export function Map({
   selectedReadiness = EMPTY_READINESS_SELECTION,
   onReadinessChange,
   obisOnly = false,
-  onObisOnlyChange,
   mapLayer = 'programmes',
   onMapLayerChange,
   colorScheme = 'hawaii',
@@ -1007,22 +1005,6 @@ export function Map({
                 </button>
               ))}
             </div>
-          </div>
-        )}
-        {!isDataLayer && onObisOnlyChange && (
-          <div className="map-filter-section" data-tour="programme-filters">
-            <span className="map-eov-widget-title">OBIS data</span>
-            <label
-              className="map-eov-toggle"
-              title="Programmes with datasets in OBIS tagged with one of the programme's identifiers"
-            >
-              <input
-                type="checkbox"
-                checked={obisOnly}
-                onChange={(e) => onObisOnlyChange(e.target.checked)}
-              />
-              <span>Only programmes with OBIS data</span>
-            </label>
           </div>
         )}
         <div className="map-filter-section" data-tour="display-options">
