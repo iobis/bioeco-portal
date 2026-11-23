@@ -1,33 +1,40 @@
-/** Sovereign countries (and high seas) used by the EEZ country filter. */
-export interface CountryOption {
-  /** Sovereign ISO3 code, or `ABNJ` for high seas. */
-  iso: string
+/**
+ * Area filter: OBIS-style areas built from the Marine Regions EEZ x IHO
+ * intersect (see scripts/build_eez_data.py), e.g.
+ *   "Canada: North Atlantic", "United Kingdom: Cayman Islands",
+ *   "United Kingdom: all", "ABNJ: Indian Ocean".
+ * Joint regimes and overlapping claims are not included.
+ * A selection is a list of area ids; the API matches any of them (OR).
+ */
+
+export type AreaKind = 'home' | 'basin' | 'territory' | 'all' | 'abnj' | 'declared'
+
+export interface AreaOption {
+  /** Stable slug, e.g. `canada-north-atlantic`. */
+  id: string
   name: string
-  /** Overseas territories / EEZ units that roll up to this country. */
-  territories: string[]
-  landlocked: boolean
-  /** Programmes tagged with this country (spatially or via schema:country). */
+  kind: AreaKind
+  /** Programmes with data in this area (or, for whole-country areas, declaring the country). */
   programmes: number
 }
 
-export interface CountriesResponse {
+export interface AreasResponse {
   source?: string
-  items: CountryOption[]
+  items: AreaOption[]
 }
 
-export const HIGH_SEAS_ISO = 'ABNJ'
-
-export function appendCountryParams(params: URLSearchParams, countries: readonly string[]): void {
-  if (countries.length) params.set('country', countries.join(','))
+/** Add the `area=` query param for a selection. */
+export function appendAreaParams(params: URLSearchParams, areas: readonly string[]): void {
+  if (areas.length) params.set('area', areas.join(','))
 }
 
 /** Stable key for a selection (order-insensitive). */
-export function countrySelectionKey(countries: readonly string[]): string {
-  return [...countries].sort().join(',')
+export function areaSelectionKey(areas: readonly string[]): string {
+  return [...areas].sort().join(',')
 }
 
 /** Lowercase, strip accents, collapse punctuation — for type-ahead matching. */
-export function normalizeCountryText(value: string): string {
+export function normalizeAreaText(value: string): string {
   return value
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')

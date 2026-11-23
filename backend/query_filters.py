@@ -1,6 +1,8 @@
 """Shared Elasticsearch filter helpers for programme queries."""
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, Optional, Sequence
 
@@ -149,16 +151,66 @@ def parse_country_codes(raw: Optional[str]) -> list[str]:
     return codes
 
 
-def country_filters(codes: Optional[list[str] | str] = None) -> list[dict]:
-    """Match documents tagged with any of the selected countries (OR).
+_AREA_ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
-    Works on both indices: grid cells carry the EEZs they intersect; programme
-    docs carry the union of their cells plus declared ``schema:country``.
-    """
-    parsed = parse_country_codes(codes) if isinstance(codes, str) or codes is None else codes
-    if not parsed:
+
+def parse_area_ids(raw: Optional[str]) -> list[str]:
+    """Parse comma-separated area ids (slugs from data/regions.json, e.g. ``canada-north-atlantic``)."""
+    if not raw or not raw.strip():
         return []
-    return [{"terms": {"country_isos": parsed}}]
+    ids: list[str] = []
+    for part in raw.split(","):
+        token = part.strip().lower()
+        if not token:
+            continue
+        if not _AREA_ID_RE.match(token):
+            raise ValueError(f"invalid area id: {part!r}")
+        if token not in ids:
+            ids.append(token)
+    return ids
+
+
+@dataclass(frozen=True)
+class RegionSelection:
+    """Selected filter areas (OR between them)."""
+
+    areas: tuple[str, ...] = ()
+
+    def __bool__(self) -> bool:
+        return bool(self.areas)
+
+
+def parse_region_selection(area: Optional[str]) -> RegionSelection:
+    """Parse and validate the ``area`` query param (ValueError on unknown ids)."""
+    from regions import resolve_areas
+
+    ids = tuple(parse_area_ids(area))
+    resolve_areas(ids)  # validate
+    return RegionSelection(ids)
+
+
+def region_filters(region: Optional[RegionSelection]) -> list[dict]:
+    """Match documents inside any of the selected areas.
+
+    Works on both indices: grid cells carry the EEZ x IHO units they intersect,
+    programme docs the union over their cells. Areas that stand for a whole
+    country (``Portugal: all``, or ``Italy`` when it has a single entry) also
+    match programmes that declare the country in ``schema:country``; grid
+    docs have no declared countries, so the map only shows spatial data.
+    """
+    if not region:
+        return []
+    from regions import resolve_areas
+
+    units, declared = resolve_areas(region.areas)
+    should: list[dict] = []
+    if units:
+        should.append({"terms": {"marregion_mrgids": units}})
+    if declared:
+        should.append({"terms": {"country_isos_declared": declared}})
+    if not should:
+        return [{"bool": {"must_not": [{"match_all": {}}]}}]
+    return [{"bool": {"should": should, "minimum_should_match": 1}}]
 
 
 def status_filters(status: Optional[str], *, as_of_year: Optional[int] = None) -> list[dict]:

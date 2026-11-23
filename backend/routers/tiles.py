@@ -8,12 +8,13 @@ from elasticsearch.exceptions import NotFoundError
 from config import GRID_INDEX
 from es_client import get_es_client
 from query_filters import (
-    country_filters,
     grid_text_search_query,
     normalize_status,
-    parse_country_codes,
+    parse_region_selection,
     parse_readiness_levels,
     readiness_filters,
+    region_filters,
+    RegionSelection,
     status_filters,
 )
 
@@ -30,7 +31,7 @@ def _build_mvt_query(
     readiness_data: Optional[list[int]] = None,
     readiness_requirements: Optional[list[int]] = None,
     readiness_coordination: Optional[list[int]] = None,
-    countries: Optional[list[str]] = None,
+    region: Optional[RegionSelection] = None,
 ) -> dict:
     filters = []
     if eov and eov.strip():
@@ -55,7 +56,7 @@ def _build_mvt_query(
             coordination=readiness_coordination,
         )
     )
-    filters.extend(country_filters(countries))
+    filters.extend(region_filters(region))
     if not must and not filters:
         return {"match_all": {}}
     body: dict = {"bool": {}}
@@ -93,9 +94,13 @@ def get_projects_tile(
         None,
         description="GOOS readiness-coordination levels 1–9 (comma-separated)",
     ),
-    country: Optional[str] = Query(
+    area: Optional[str] = Query(
         None,
-        description="Sovereign ISO3 codes (comma-separated; ABNJ = high seas). Cells inside any selected EEZ.",
+        description=(
+            "Area ids from /api/countries (comma-separated), e.g. canada-north-atlantic, "
+            "united-kingdom-all, abnj. Matches programmes with data in any selected area; "
+            "whole-country areas also match programmes declaring the country (schema:country)."
+        ),
     ),
     es: Elasticsearch = Depends(get_es_client),
 ):
@@ -115,7 +120,7 @@ def get_projects_tile(
         readiness_data_levels = parse_readiness_levels(readiness_data)
         readiness_requirements_levels = parse_readiness_levels(readiness_requirements)
         readiness_coordination_levels = parse_readiness_levels(readiness_coordination)
-        country_codes = parse_country_codes(country)
+        region_sel = parse_region_selection(area)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -130,7 +135,7 @@ def get_projects_tile(
             readiness_data_levels,
             readiness_requirements_levels,
             readiness_coordination_levels,
-            country_codes,
+            region_sel,
         ),
         "grid_agg": "geotile",
         "grid_precision": 5,

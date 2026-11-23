@@ -1,105 +1,88 @@
-"""Countries (sovereign states) and their EEZ outlines for the country filter.
+"""Filter areas (countries, territories, ocean basins, ABNJ) with programme counts.
 
-Data comes from data/countries.json and data/eez_land.geojson, built from
-Marine Regions by scripts/build_eez_data.py.
+Areas come from data/regions.json (Marine Regions EEZ x IHO intersect, grouped
+OBIS-style by scripts/build_eez_data.py). Boundary lines are deliberately not
+served: the map only shows the programme data that falls inside a selection.
 """
 from __future__ import annotations
 
-import json
-from functools import lru_cache
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
 
-from config import DATA_DIR, PROJECT_INDEX
+from config import GRID_INDEX, PROJECT_INDEX
 from es_client import get_es_client
-from query_filters import parse_country_codes
+from query_filters import RegionSelection, parse_region_selection, region_filters
+from regions import load_regions
 
 router = APIRouter()
 
 
-@lru_cache(maxsize=1)
-def _countries_file() -> dict:
-    path = DATA_DIR / "countries.json"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="countries.json not found; run scripts/build_eez_data.py")
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
-
-
-@lru_cache(maxsize=1)
-def _eez_features() -> list[dict]:
-    path = DATA_DIR / "eez_land.geojson"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="eez_land.geojson not found; run scripts/build_eez_data.py")
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)["features"]
-
-
-def _programme_counts(es: Elasticsearch) -> dict[str, int]:
-    body = {
-        "size": 0,
-        "aggs": {"countries": {"terms": {"field": "country_isos", "size": 500}}},
-    }
+def _programme_counts(es: Elasticsearch, areas: list[dict]) -> dict[str, int]:
+    """Programmes per area, in one request (a filters aggregation over all areas)."""
+    filters = {}
+    for a in areas:
+        clauses = region_filters(RegionSelection((a["id"],)))
+        filters[a["id"]] = {"bool": {"filter": clauses}}
+    body = {"size": 0, "aggs": {"areas": {"filters": {"filters": filters}}}}
     try:
         resp = es.search(index=PROJECT_INDEX, body=body)
     except NotFoundError:
         return {}
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
-    return {
-        str(b["key"]): int(b["doc_count"])
-        for b in resp["aggregations"]["countries"]["buckets"]
-    }
+    buckets = resp["aggregations"]["areas"]["buckets"]
+    return {area_id: int(b["doc_count"]) for area_id, b in buckets.items()}
 
 
 @router.get("")
-def list_countries(es: Elasticsearch = Depends(get_es_client)):
-    """Sovereign countries (plus high seas) with the number of programmes tagged with each."""
-    data = _countries_file()
-    counts = _programme_counts(es)
-    high_seas = data.get("high_seas") or {"iso": "ABNJ", "name": "High seas (ABNJ)"}
+def list_areas(es: Elasticsearch = Depends(get_es_client)):
+    """All filter areas with the number of programmes in each.
+
+    ``kind`` is one of: home, basin, territory, all, abnj or declared
+    (no marine area; only programmes naming the country in schema:country).
+    """
+    data = load_regions()
+    areas = data.get("areas", [])
+    counts = _programme_counts(es, areas) if areas else {}
     items = [
-        {
-            "iso": c["iso"],
-            "name": c["name"],
-            "territories": c.get("territories", []),
-            "landlocked": bool(c.get("landlocked")),
-            "programmes": counts.get(c["iso"], 0),
-        }
-        for c in data.get("countries", [])
+        {"id": a["id"], "name": a["name"], "kind": a["kind"], "programmes": counts.get(a["id"], 0)}
+        for a in areas
     ]
-    items.append(
-        {
-            "iso": high_seas["iso"],
-            "name": high_seas["name"],
-            "territories": [],
-            "landlocked": False,
-            "programmes": counts.get(high_seas["iso"], 0),
-        }
-    )
     return {"source": data.get("source"), "items": items}
 
 
-@router.get("/eez")
-def get_eez_outlines(
-    country: Optional[str] = Query(None, description="Sovereign ISO3 codes (comma-separated; ABNJ = high seas)"),
+@router.get("/bounds")
+def get_selection_bounds(
+    area: Optional[str] = Query(None, description="Area ids (comma-separated)"),
+    es: Elasticsearch = Depends(get_es_client),
 ):
-    """Simplified EEZ/land polygons for the selected countries, as GeoJSON.
+    """Extent of the programme data inside the selection, for zooming the map.
 
-    Includes overlapping claims and joint regimes that involve a selected country,
-    i.e. exactly the areas the country filter matches.
+    Returns ``{"bbox": [west, south, east, north]}``; ``west > east`` means the
+    extent crosses the antimeridian. ``bbox`` is null when there is no data.
     """
     try:
-        codes = set(parse_country_codes(country))
+        region = parse_region_selection(area)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    features = []
-    if codes:
-        for f in _eez_features():
-            sovereigns = f["properties"].get("sovereigns") or []
-            if codes.intersection(sovereigns):
-                features.append(f)
-    return {"type": "FeatureCollection", "features": features}
+    if not region:
+        return {"bbox": None}
+    body = {
+        "size": 0,
+        "query": {"bool": {"filter": region_filters(region)}},
+        "aggs": {"extent": {"geo_bounds": {"field": "geometry", "wrap_longitude": True}}},
+    }
+    try:
+        resp = es.search(index=GRID_INDEX, body=body)
+    except NotFoundError:
+        return {"bbox": None}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    bounds = resp["aggregations"]["extent"].get("bounds")
+    if not bounds:
+        return {"bbox": None}
+    tl, br = bounds["top_left"], bounds["bottom_right"]
+    return {"bbox": [tl["lon"], br["lat"], br["lon"], tl["lat"]]}

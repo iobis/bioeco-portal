@@ -21,7 +21,7 @@ try:
 except Exception:
     antimeridian = None
 
-from eez import EezIndex
+from eez import TAG_FIELDS, EezIndex
 
 project_index = "project"
 grid_index = "project_grid"
@@ -53,12 +53,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "data"
 
 
-# Sovereign ISO3 codes (plus "ABNJ" for high seas) and Marine Regions EEZ ids.
-# On project docs: union of grid-cell tags and declared schema:country values.
-COUNTRY_FIELD_MAPPINGS = {
-    "country_isos": {"type": "keyword"},
-    "eez_mrgids": {"type": "keyword"},
-}
+# Marine region tags from the EEZ x IHO units a doc's cells intersect:
+#   country_isos      sovereign ISO3 codes ("ABNJ" for high seas)
+#   eez_mrgids        Marine Regions EEZ ids
+#   iho_mrgids        Marine Regions IHO sea area ids
+#   marregion_mrgids  EEZ x IHO unit ids (one country's part of one sea)
+# On project docs: union over the programme's cells; country_isos also
+# includes declared schema:country values.
+COUNTRY_FIELD_MAPPINGS = {field: {"type": "keyword"} for field in TAG_FIELDS}
 
 _eez_index: EezIndex | None = None
 _eez_index_loaded = False
@@ -268,7 +270,7 @@ def ensure_indices(client, clear_indexes: bool = False):
         if not client.indices.exists(index=index):
             continue
         props = mapping["mappings"]["properties"]
-        country_props = {k: props[k] for k in props if k.startswith("countr") or k == "eez_mrgids"}
+        country_props = {k: props[k] for k in props if k.startswith("countr") or k in TAG_FIELDS}
         try:
             client.indices.put_mapping(index=index, body={"properties": country_props})
         except Exception as e:
@@ -1304,15 +1306,18 @@ def index_project_bindings(
                 cells.extend(outer_geohashes_polygon)
         cells = list(set(cells))
 
-        # Countries: EEZ/land units under the programme's grid cells, plus any
-        # declared via schema:country. Grid docs only carry the spatial tags so
-        # the map shows the part of a programme inside the selected EEZ.
+        # Countries / seas: EEZ x IHO units under the programme's grid cells,
+        # plus countries declared via schema:country. Grid docs only carry the
+        # spatial tags so the map shows the part of a programme inside the
+        # selected area.
         eez_index = get_eez_index()
-        cell_tags: dict[str, tuple[list[str], list[str]]] = {}
+        cell_tags: dict[str, dict[str, list[str]]] = {}
         if eez_index is not None and cells:
             cell_tags = eez_index.tag_cells(cells)
-        spatial_isos = {iso for isos, _ in cell_tags.values() for iso in isos}
-        eez_mrgids = {m for _, mrgids in cell_tags.values() for m in mrgids}
+        spatial_tags = {
+            field: {v for tags in cell_tags.values() for v in tags[field]} for field in TAG_FIELDS
+        }
+        spatial_isos = spatial_tags["country_isos"]
 
         declared_names: list[str] = []
         declared_value = project.pop("declared_countries", None)
@@ -1348,8 +1353,9 @@ def index_project_bindings(
         if spatial_isos or declared_isos:
             project["country_isos"] = sorted(spatial_isos | declared_isos)
             stats["projects_with_countries"] += 1
-        if eez_mrgids:
-            project["eez_mrgids"] = sorted(eez_mrgids)
+        for field in TAG_FIELDS:
+            if field != "country_isos" and spatial_tags[field]:
+                project[field] = sorted(spatial_tags[field])
 
         indexed_ok = False
         try:
@@ -1388,7 +1394,6 @@ def index_project_bindings(
                 actions = []
                 for cell in cells:
                     lat, lon = geohash_center(cell)
-                    cell_isos, cell_mrgids = cell_tags.get(cell, ([], []))
                     doc = {
                         "id": project["id"],
                         "project": project["name"],
@@ -1400,8 +1405,7 @@ def index_project_bindings(
                         "start_year": project.get("start_year"),
                         "end_year": project.get("end_year"),
                         "geometry": (lon, lat),
-                        "country_isos": cell_isos,
-                        "eez_mrgids": cell_mrgids,
+                        **(cell_tags.get(cell) or {field: [] for field in TAG_FIELDS}),
                     }
                     actions.append(
                         {

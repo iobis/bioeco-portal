@@ -12,12 +12,11 @@ import {
 } from '../timeRange'
 import type { ColorSchemeId, MapLayerMode } from '../urlState'
 import { TimeRangeSlider } from './TimeRangeSlider'
-import { CountryFilter } from './CountryFilter'
+import { AreaFilter } from './CountryFilter'
 import {
-  HIGH_SEAS_ISO,
-  appendCountryParams,
-  countrySelectionKey,
-  type CountryOption,
+  appendAreaParams,
+  areaSelectionKey,
+  type AreaOption,
 } from '../countries'
 import {
   EMPTY_READINESS_SELECTION,
@@ -40,10 +39,6 @@ const CELL_HOVER_SOURCE_ID = 'cell-hover'
 const CELL_HOVER_LAYER_ID = 'cell-hover-layer'
 const CELL_HOVER_OUTLINE_LAYER_ID = 'cell-hover-outline'
 const PROJECT_GRID_LAYER_ID = 'project-grid'
-const COUNTRY_EEZ_SOURCE_ID = 'country-eez'
-const COUNTRY_EEZ_FILL_LAYER_ID = 'country-eez-fill'
-const COUNTRY_EEZ_LINE_LAYER_ID = 'country-eez-outline'
-const COUNTRY_EEZ_COLOR = '#0f172a'
 const OBIS_SOURCE_ID = 'obis-occurrence'
 const OBIS_LAYER_ID = 'obis-occurrence-fill'
 const OBIS_LABELS_LAYER_ID = 'obis-occurrence-labels'
@@ -201,48 +196,15 @@ export function bboxToString(bbox: [number, number, number, number]): string {
 }
 
 /**
- * Bounds of a feature collection, picking whichever of [-180, 180] or [0, 360]
- * longitudes gives the narrower box so EEZs straddling the antimeridian (Fiji,
- * New Zealand, Russia) do not zoom out to the whole world. The high-seas
- * feature is ignored since it spans the globe.
+ * Map bounds for a `[west, south, east, north]` box from the API. When the box
+ * crosses the antimeridian (west > east) the east edge is shifted by 360° so
+ * MapLibre fits the narrow box instead of the whole world.
  */
-function featureCollectionBounds(fc: GeoJSON.FeatureCollection): maplibregl.LngLatBoundsLike | null {
-  let minLat = Infinity
-  let maxLat = -Infinity
-  let minLon = Infinity
-  let maxLon = -Infinity
-  let minLon360 = Infinity
-  let maxLon360 = -Infinity
-  const visit = (coords: unknown): void => {
-    if (!Array.isArray(coords)) return
-    if (typeof coords[0] === 'number') {
-      const [lon, lat] = coords as [number, number]
-      const lon360 = lon < 0 ? lon + 360 : lon
-      if (lat < minLat) minLat = lat
-      if (lat > maxLat) maxLat = lat
-      if (lon < minLon) minLon = lon
-      if (lon > maxLon) maxLon = lon
-      if (lon360 < minLon360) minLon360 = lon360
-      if (lon360 > maxLon360) maxLon360 = lon360
-      return
-    }
-    for (const c of coords) visit(c)
-  }
-  for (const f of fc.features) {
-    const sovereigns = (f.properties?.sovereigns as string[] | undefined) ?? []
-    if (sovereigns.includes(HIGH_SEAS_ISO)) continue
-    if (f.geometry && 'coordinates' in f.geometry) visit(f.geometry.coordinates)
-  }
-  if (!Number.isFinite(minLat)) return null
-  if (maxLon360 - minLon360 < maxLon - minLon) {
-    return [
-      [minLon360, minLat],
-      [maxLon360, maxLat],
-    ]
-  }
+
+function bboxToLngLatBounds([west, south, east, north]: [number, number, number, number]): maplibregl.LngLatBoundsLike {
   return [
-    [minLon, minLat],
-    [maxLon, maxLat],
+    [west, south],
+    [east < west ? east + 360 : east, north],
   ]
 }
 
@@ -253,9 +215,9 @@ interface MapProps {
   selectedEovCategories?: string[]
   onEovCategoriesChange?: (keys: string[]) => void
   eovVocabulary?: EovVocabulary | null
-  countryOptions?: CountryOption[]
-  selectedCountries?: string[]
-  onCountriesChange?: (isos: string[]) => void
+  areaOptions?: AreaOption[]
+  selectedAreas?: string[]
+  onAreasChange?: (ids: string[]) => void
   programmeStatus?: ProgrammeStatus
   onProgrammeStatusChange?: (status: ProgrammeStatus) => void
   selectedReadiness?: ReadinessSelection
@@ -283,9 +245,9 @@ export function Map({
   selectedEovCategories = [],
   onEovCategoriesChange,
   eovVocabulary = null,
-  countryOptions = [],
-  selectedCountries = [],
-  onCountriesChange,
+  areaOptions = [],
+  selectedAreas = [],
+  onAreasChange,
   programmeStatus = 'all',
   onProgrammeStatusChange,
   selectedReadiness = EMPTY_READINESS_SELECTION,
@@ -330,7 +292,7 @@ export function Map({
   hoveredIdRef.current = hoveredProjectId ?? null
   selectedCellBboxRef.current = selectedCellBbox ?? null
   const isDataLayer = mapLayer === 'data'
-  const countryKey = countrySelectionKey(selectedCountries)
+  const areaKey = areaSelectionKey(selectedAreas)
   const gridMetric: GridMetric = mapLayer === 'eovs' ? 'eovs' : 'programmes'
 
   useEffect(() => {
@@ -663,14 +625,14 @@ export function Map({
     const eovCat = selectedEovCategories.length ? selectedEovCategories.join(',') : ''
     const statusKey = programmeStatus === 'all' ? '' : programmeStatus
     const readinessKey = readinessSelectionKey(selectedReadiness)
-    const tileKey = `${eovCat}|${statusKey}|${readinessKey}|${countryKey}`
+    const tileKey = `${eovCat}|${statusKey}|${readinessKey}|${areaKey}`
     if (lastAppliedSearchRef.current === tileKey) return
     // Avoid replacing the source on initial load when we have no filters – the style already has project-tiles.
     if (
       !eovCat &&
       !statusKey &&
       !readinessKey &&
-      !countryKey &&
+      !areaKey &&
       lastAppliedSearchRef.current === undefined
     ) {
       lastAppliedSearchRef.current = tileKey
@@ -683,7 +645,7 @@ export function Map({
     if (eovCat) params.set('eov_category', eovCat)
     if (statusKey) params.set('status', statusKey)
     appendReadinessParams(params, selectedReadiness)
-    appendCountryParams(params, countryKey ? countryKey.split(',') : [])
+    appendAreaParams(params, areaKey ? areaKey.split(',') : [])
     const queryString = params.toString()
     const tileUrl = `${origin}/api/tiles/projects/{z}/{x}/{y}.mvt${queryString ? `?${queryString}` : ''}`
 
@@ -748,75 +710,27 @@ export function Map({
         map.setLayoutProperty('project-grid-labels', 'visibility', 'none')
       }
     }
-  }, [selectedEovCategories, programmeStatus, selectedReadiness, countryKey, mapReady])
+  }, [selectedEovCategories, programmeStatus, selectedReadiness, areaKey, mapReady])
 
-  // Outline the selected countries' EEZs and zoom to them.
+  // Zoom to the programme data inside the selected areas. Boundary
+  // lines are deliberately not drawn: only the data inside the selection shows.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !mapReady) return
-
-    const removeOutline = () => {
-      if (map.getLayer(COUNTRY_EEZ_LINE_LAYER_ID)) map.removeLayer(COUNTRY_EEZ_LINE_LAYER_ID)
-      if (map.getLayer(COUNTRY_EEZ_FILL_LAYER_ID)) map.removeLayer(COUNTRY_EEZ_FILL_LAYER_ID)
-      if (map.getSource(COUNTRY_EEZ_SOURCE_ID)) map.removeSource(COUNTRY_EEZ_SOURCE_ID)
-    }
-    if (!countryKey) {
-      removeOutline()
-      return
-    }
+    if (!map || !mapReady || !areaKey) return
 
     const controller = new AbortController()
-    fetch(`/api/countries/eez?country=${encodeURIComponent(countryKey)}`, { signal: controller.signal })
+    const params = new URLSearchParams()
+    appendAreaParams(params, areaKey.split(','))
+    fetch(`/api/countries/bounds?${params.toString()}`, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.statusText))))
-      .then((data: GeoJSON.FeatureCollection) => {
-        if (controller.signal.aborted) return
-        removeOutline()
-        map.addSource(COUNTRY_EEZ_SOURCE_ID, {
-          type: 'geojson',
-          data,
-          attribution:
-            'EEZs: <a href="https://www.marineregions.org/" target="_blank" rel="noopener noreferrer">Marine Regions</a> (VLIZ, CC-BY 4.0)',
-        })
-        const beforeId = map.getLayer(CELL_HOVER_LAYER_ID) ? CELL_HOVER_LAYER_ID : undefined
-        const visibility = mapLayerRef.current === 'data' ? 'none' : 'visible'
-        map.addLayer(
-          {
-            id: COUNTRY_EEZ_FILL_LAYER_ID,
-            type: 'fill',
-            source: COUNTRY_EEZ_SOURCE_ID,
-            layout: { visibility },
-            paint: { 'fill-color': COUNTRY_EEZ_COLOR, 'fill-opacity': 0.04 },
-          },
-          beforeId,
-        )
-        map.addLayer(
-          {
-            id: COUNTRY_EEZ_LINE_LAYER_ID,
-            type: 'line',
-            source: COUNTRY_EEZ_SOURCE_ID,
-            layout: { visibility },
-            paint: { 'line-color': COUNTRY_EEZ_COLOR, 'line-width': 1.25, 'line-opacity': 0.8 },
-          },
-          beforeId,
-        )
-        const bounds = featureCollectionBounds(data)
-        if (bounds) map.fitBounds(bounds, { padding: 48, maxZoom: 6, duration: 800 })
+      .then((data: { bbox: [number, number, number, number] | null }) => {
+        if (controller.signal.aborted || !data.bbox) return
+        map.fitBounds(bboxToLngLatBounds(data.bbox), { padding: 48, maxZoom: 6, duration: 800 })
       })
-      .catch(() => {
-        if (!controller.signal.aborted) removeOutline()
-      })
+      .catch(() => {})
 
     return () => controller.abort()
-  }, [countryKey, mapReady])
-
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !mapReady) return
-    const visibility = isDataLayer ? 'none' : 'visible'
-    for (const id of [COUNTRY_EEZ_FILL_LAYER_ID, COUNTRY_EEZ_LINE_LAYER_ID]) {
-      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility)
-    }
-  }, [isDataLayer, mapReady])
+  }, [areaKey, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
@@ -1079,24 +993,24 @@ export function Map({
             </button>
           </div>
         ) : null}
-        {!isDataLayer && onCountriesChange && countryOptions.length ? (
+        {!isDataLayer && onAreasChange && areaOptions.length ? (
           <div className="map-filter-section" data-tour="country-filter">
             <span className="map-eov-widget-title">
-              Country (EEZ)
-              {selectedCountries.length ? (
+              Country / area
+              {selectedAreas.length ? (
                 <button
                   type="button"
                   className="map-filter-clear"
-                  onClick={() => onCountriesChange([])}
+                  onClick={() => onAreasChange([])}
                 >
                   Clear
                 </button>
               ) : null}
             </span>
-            <CountryFilter
-              countries={countryOptions}
-              selected={selectedCountries}
-              onChange={onCountriesChange}
+            <AreaFilter
+              areas={areaOptions}
+              selected={selectedAreas}
+              onChange={onAreasChange}
             />
           </div>
         ) : null}

@@ -1,9 +1,10 @@
-"""Country / EEZ tagging for programmes and their geohash grid cells.
+"""Country / sea tagging for programmes and their geohash grid cells.
 
-Uses data/eez_land.geojson and data/countries.json (built by build_eez_data.py
-from Marine Regions). Each grid cell is tagged with every EEZ/land unit it
-intersects; a programme's countries are the union of its cells' countries plus
-any countries declared in its metadata (schema:country).
+Uses data/eez_iho.geojson and data/regions.json (built by build_eez_data.py
+from the Marine Regions EEZ x IHO intersect, the same areas OBIS uses). Each
+grid cell is tagged with every unit it intersects: sovereign countries, IHO sea,
+EEZ and the unit itself. A programme's tags are the union of its cells' tags;
+its countries also include any declared in its metadata (schema:country).
 """
 from __future__ import annotations
 
@@ -76,14 +77,8 @@ NAME_ALIASES = {
     "mauritius": "MUS",
     "luxembourg": "LUX",
     "comoros": "COM",
-    # Overlapping-claim units, so not listed as territories by Marine Regions.
-    "gibraltar": "GBR",
-    "falkland islands": "GBR",
-    "south georgia and the south sandwich islands": "GBR",
-    "chagos archipelago": "GBR",
-    "british indian ocean territory": "GBR",
-    "mayotte": "FRA",
-    "western sahara": "ESH",
+    # Disputed territories (overlapping claims in Marine Regions) are deliberately
+    # not mapped to any one claimant; such names are reported as unrecognised.
     "high seas": HIGH_SEAS_ISO,
     "abnj": HIGH_SEAS_ISO,
     "areas beyond national jurisdiction": HIGH_SEAS_ISO,
@@ -101,28 +96,37 @@ def normalize_country_name(value: str) -> str:
     return text
 
 
-class EezIndex:
-    """Spatial index over EEZ/land units for tagging grid cells with countries."""
+TAG_FIELDS = ("country_isos", "eez_mrgids", "iho_mrgids", "marregion_mrgids")
 
-    def __init__(self, features: list[dict], countries: dict):
+
+class EezIndex:
+    """Spatial index over EEZ x IHO units for tagging grid cells."""
+
+    def __init__(self, features: list[dict], regions: dict):
+        units = {u["mrgid"]: u for u in regions.get("units", [])}
+        features = [f for f in features if str(f["properties"]["mrgid"]) in units]
         self._geoms = np.array([shape(f["geometry"]) for f in features], dtype=object)
         shapely.prepare(self._geoms)
         self._tree = shapely.STRtree(self._geoms)
-        self._sovereigns = [tuple(f["properties"].get("sovereigns") or ()) for f in features]
-        self._mrgids = [
-            str(f["properties"]["mrgid"]) if f["properties"].get("mrgid") is not None else None
-            for f in features
-        ]
-        self._name_to_iso = self._build_name_lookup(countries)
+        # Per unit: the values it contributes to each tag field. Units missing
+        # from regions.json (joint regimes, overlapping claims) are skipped.
+        self._unit_tags: list[dict[str, tuple[str, ...]]] = []
+        for f in features:
+            u = units[str(f["properties"]["mrgid"])]
+            self._unit_tags.append(
+                {
+                    "country_isos": tuple(u.get("sovereigns") or ()),
+                    "eez_mrgids": (u["eez_mrgid"],) if u.get("eez_mrgid") else (),
+                    "iho_mrgids": (u["iho_mrgid"],) if u.get("iho_mrgid") else (),
+                    "marregion_mrgids": (u["mrgid"],),
+                }
+            )
+        self._name_to_iso = self._build_name_lookup(regions)
 
     @staticmethod
-    def _build_name_lookup(countries: dict) -> dict[str, str]:
+    def _build_name_lookup(regions: dict) -> dict[str, str]:
         lookup: dict[str, str] = {}
-        high_seas = countries.get("high_seas") or {}
-        if high_seas.get("iso"):
-            lookup[normalize_country_name(high_seas["iso"])] = high_seas["iso"]
-            lookup[normalize_country_name(high_seas.get("name") or "")] = high_seas["iso"]
-        for c in countries.get("countries", []):
+        for c in regions.get("countries", []):
             iso = c["iso"]
             for name in [iso, c.get("name"), c.get("marine_regions_name"), *c.get("territories", [])]:
                 if name:
@@ -133,21 +137,21 @@ class EezIndex:
 
     @classmethod
     def load(cls, data_dir: Path) -> "EezIndex | None":
-        eez_path = data_dir / "eez_land.geojson"
-        countries_path = data_dir / "countries.json"
-        if not eez_path.exists() or not countries_path.exists():
+        geo_path = data_dir / "eez_iho.geojson"
+        regions_path = data_dir / "regions.json"
+        if not geo_path.exists() or not regions_path.exists():
             logging.warning(
-                "EEZ data not found in %s; country tags will be empty. "
+                "Marine region data not found in %s; country/sea tags will be empty. "
                 "Run scripts/build_eez_data.py to create it.",
                 data_dir,
             )
             return None
-        with open(eez_path, encoding="utf-8") as f:
+        with open(geo_path, encoding="utf-8") as f:
             features = [ft for ft in json.load(f)["features"] if ft.get("geometry")]
-        with open(countries_path, encoding="utf-8") as f:
-            countries = json.load(f)
-        logging.info("Loaded %d EEZ/land units for country tagging", len(features))
-        return cls(features, countries)
+        with open(regions_path, encoding="utf-8") as f:
+            regions = json.load(f)
+        logging.info("Loaded %d EEZ x IHO units for country/sea tagging", len(features))
+        return cls(features, regions)
 
     def resolve_country(self, value: str) -> str | None:
         """Map a declared country name (or ISO3 code) to a sovereign ISO3 code."""
@@ -155,23 +159,24 @@ class EezIndex:
             return None
         return self._name_to_iso.get(normalize_country_name(value))
 
-    def tag_cells(self, cells: list[str]) -> dict[str, tuple[list[str], list[str]]]:
-        """Return {cell: (sovereign ISO3 codes, EEZ MRGIDs)} for each geohash cell."""
+    def tag_cells(self, cells: list[str]) -> dict[str, dict[str, list[str]]]:
+        """Return {cell: {tag field: sorted values}} for each geohash cell (see TAG_FIELDS)."""
         if not cells:
             return {}
         bounds = np.array([geohash_bbox(c) for c in cells])
         boxes = shapely.box(bounds[:, 0], bounds[:, 1], bounds[:, 2], bounds[:, 3])
         # Bounding-box candidates from the tree, then an exact test against the
-        # (prepared) EEZ polygons.
-        cell_idx, eez_idx = self._tree.query(boxes)
+        # (prepared) unit polygons.
+        cell_idx, unit_idx = self._tree.query(boxes)
         if len(cell_idx):
-            hits = shapely.intersects(self._geoms[eez_idx], boxes[cell_idx])
-            cell_idx, eez_idx = cell_idx[hits], eez_idx[hits]
+            hits = shapely.intersects(self._geoms[unit_idx], boxes[cell_idx])
+            cell_idx, unit_idx = cell_idx[hits], unit_idx[hits]
 
-        isos: list[set[str]] = [set() for _ in cells]
-        mrgids: list[set[str]] = [set() for _ in cells]
-        for ci, ei in zip(cell_idx.tolist(), eez_idx.tolist()):
-            isos[ci].update(self._sovereigns[ei])
-            if self._mrgids[ei]:
-                mrgids[ci].add(self._mrgids[ei])
-        return {cell: (sorted(isos[i]), sorted(mrgids[i])) for i, cell in enumerate(cells)}
+        tags: list[dict[str, set[str]]] = [{k: set() for k in TAG_FIELDS} for _ in cells]
+        for ci, ui in zip(cell_idx.tolist(), unit_idx.tolist()):
+            for field, values in self._unit_tags[ui].items():
+                tags[ci][field].update(values)
+        return {
+            cell: {field: sorted(values) for field, values in tags[i].items()}
+            for i, cell in enumerate(cells)
+        }

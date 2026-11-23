@@ -1,67 +1,51 @@
 import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { HIGH_SEAS_ISO, normalizeCountryText, type CountryOption } from '../countries'
+import { normalizeAreaText, type AreaOption } from '../countries'
 
-interface CountryFilterProps {
-  countries: CountryOption[]
+interface AreaFilterProps {
+  areas: AreaOption[]
+  /** Selected area ids. */
   selected: string[]
-  onChange: (isos: string[]) => void
+  onChange: (ids: string[]) => void
 }
 
-interface MatchedOption {
-  country: CountryOption
-  /** Territory that matched the query, when the country name itself did not. */
-  via: string | null
-}
+const MAX_OPTIONS = 80
 
-const MAX_OPTIONS = 60
-
-/** Type-ahead multi-select for countries (EEZs), shown as removable chips. */
-export function CountryFilter({ countries, selected, onChange }: CountryFilterProps) {
+/**
+ * Type-ahead multi-select for OBIS-style areas ("Canada: North Atlantic",
+ * "United Kingdom: Cayman Islands", "ABNJ", ...), shown as removable chips.
+ * Areas without programmes are hidden.
+ */
+export function AreaFilter({ areas, selected, onChange }: AreaFilterProps) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listboxId = useId()
 
-  const byIso = useMemo(() => {
-    const m = new Map<string, CountryOption>()
-    for (const c of countries) m.set(c.iso, c)
-    return m
-  }, [countries])
+  const byId = useMemo(() => new Map(areas.map((a) => [a.id, a])), [areas])
 
-  const options = useMemo<MatchedOption[]>(() => {
-    const q = normalizeCountryText(query)
-    const out: MatchedOption[] = []
-    for (const country of countries) {
-      if (selected.includes(country.iso) || country.programmes === 0) continue
-      if (!q) {
-        out.push({ country, via: null })
-        continue
-      }
-      if (normalizeCountryText(country.name).includes(q) || country.iso.toLowerCase() === q) {
-        out.push({ country, via: null })
-        continue
-      }
-      const territory = country.territories.find((t) => normalizeCountryText(t).includes(q))
-      if (territory) out.push({ country, via: territory })
-    }
-    // High seas first, then alphabetical.
-    out.sort((a, b) => {
-      if (a.country.iso === HIGH_SEAS_ISO) return -1
-      if (b.country.iso === HIGH_SEAS_ISO) return 1
-      return a.country.name.localeCompare(b.country.name)
-    })
-    return out.slice(0, MAX_OPTIONS)
-  }, [countries, selected, query])
+  const searchable = useMemo(
+    () => areas.map((area) => ({ area, text: normalizeAreaText(area.name) })),
+    [areas],
+  )
 
-  const select = (iso: string) => {
-    onChange([...selected, iso])
+  // Keep the API order (ABNJ first, then alphabetical).
+  const options = useMemo<AreaOption[]>(() => {
+    const q = normalizeAreaText(query)
+    return searchable
+      .filter(({ area, text }) => area.programmes > 0 && !selected.includes(area.id) && (!q || text.includes(q)))
+      .slice(0, MAX_OPTIONS)
+      .map(({ area }) => area)
+  }, [searchable, selected, query])
+
+  const select = (id: string) => {
+    onChange([...selected, id])
     setQuery('')
     setActiveIndex(0)
     inputRef.current?.focus()
   }
 
-  const remove = (iso: string) => onChange(selected.filter((s) => s !== iso))
+  const remove = (id: string) => onChange(selected.filter((s) => s !== id))
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
@@ -75,7 +59,7 @@ export function CountryFilter({ countries, selected, onChange }: CountryFilterPr
       const option = options[activeIndex]
       if (open && option) {
         e.preventDefault()
-        select(option.country.iso)
+        select(option.id)
       }
     } else if (e.key === 'Escape') {
       setOpen(false)
@@ -85,19 +69,20 @@ export function CountryFilter({ countries, selected, onChange }: CountryFilterPr
   }
 
   const showList = open && options.length > 0
+  const label = (id: string) => byId.get(id)?.name ?? id
 
   return (
     <div className="country-filter">
       {selected.length ? (
-        <ul className="country-filter-chips" aria-label="Selected countries">
-          {selected.map((iso) => (
-            <li key={iso} className="country-filter-chip">
-              <span>{byIso.get(iso)?.name ?? iso}</span>
+        <ul className="country-filter-chips" aria-label="Selected areas">
+          {selected.map((id) => (
+            <li key={id} className="country-filter-chip">
+              <span>{label(id)}</span>
               <button
                 type="button"
                 className="country-filter-chip-remove"
-                aria-label={`Remove ${byIso.get(iso)?.name ?? iso}`}
-                onClick={() => remove(iso)}
+                aria-label={`Remove ${label(id)}`}
+                onClick={() => remove(id)}
               >
                 ×
               </button>
@@ -109,14 +94,14 @@ export function CountryFilter({ countries, selected, onChange }: CountryFilterPr
         ref={inputRef}
         type="text"
         className="country-filter-input"
-        placeholder={selected.length ? 'Add another country…' : 'Search countries or territories…'}
+        placeholder={selected.length ? 'Add another area…' : 'Search countries, territories or ABNJ…'}
         value={query}
         role="combobox"
         aria-expanded={showList}
         aria-controls={listboxId}
         aria-autocomplete="list"
         aria-activedescendant={showList ? `${listboxId}-${activeIndex}` : undefined}
-        aria-label="Filter by country (EEZ)"
+        aria-label="Filter by country or area"
         onChange={(e) => {
           setQuery(e.target.value)
           setActiveIndex(0)
@@ -128,9 +113,9 @@ export function CountryFilter({ countries, selected, onChange }: CountryFilterPr
       />
       {showList ? (
         <ul id={listboxId} className="country-filter-options" role="listbox">
-          {options.map(({ country, via }, i) => (
+          {options.map((area, i) => (
             <li
-              key={country.iso}
+              key={area.id}
               id={`${listboxId}-${i}`}
               role="option"
               aria-selected={i === activeIndex}
@@ -138,20 +123,25 @@ export function CountryFilter({ countries, selected, onChange }: CountryFilterPr
               // Keep focus in the input so blur doesn't close the list before the click.
               onMouseDown={(e) => e.preventDefault()}
               onMouseEnter={() => setActiveIndex(i)}
-              onClick={() => select(country.iso)}
+              onClick={() => select(area.id)}
             >
               <span className="country-filter-option-name">
-                {country.name}
-                {via ? <span className="country-filter-option-via"> · {via}</span> : null}
+                {area.name}
+                {area.kind === 'declared' ? <span className="country-filter-option-via"> · from metadata</span> : null}
               </span>
-              <span className="country-filter-option-count">{country.programmes}</span>
+              <span className="country-filter-option-count">{area.programmes}</span>
             </li>
           ))}
         </ul>
       ) : null}
       {selected.length ? (
         <p className="country-filter-hint">
-          Programmes whose area overlaps the selected EEZs, or that list the country in their metadata.
+          Programmes with data in the selected areas. Whole-country entries (e.g. “Portugal: all”) also include
+          programmes that list the country in their metadata. Areas:{' '}
+          <a href="https://www.marineregions.org/" target="_blank" rel="noopener noreferrer">
+            Marine Regions
+          </a>{' '}
+          EEZ × IHO v5 (VLIZ, CC-BY 4.0).
         </p>
       ) : null}
     </div>

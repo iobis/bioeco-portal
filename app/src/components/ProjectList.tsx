@@ -7,7 +7,7 @@ import {
   appendReadinessParams,
   type ReadinessSelection,
 } from '../readiness'
-import { appendCountryParams } from '../countries'
+import { appendAreaParams } from '../countries'
 
 interface Eov {
   code?: string
@@ -39,13 +39,13 @@ interface ProjectListProps {
   debouncedSearchQuery?: string
   eovCategories?: string[]
   eovVocabulary?: EovVocabulary | null
-  countries?: string[]
+  areas?: string[]
   programmeStatus?: ProgrammeStatus
   readiness?: ReadinessSelection
 }
 
 const PAGE_SIZE = 25
-const NO_COUNTRIES: string[] = []
+const NO_AREAS: string[] = []
 /** Wait before loading map geometry so scrolling the list does not fire a fetch per row. */
 const HOVER_DELAY_MS = 400
 
@@ -55,14 +55,14 @@ function appendProjectListParams(
     searchQuery,
     cellBbox,
     eovCategories,
-    countries,
+    areas,
     programmeStatus,
     readiness,
   }: {
     searchQuery: string
     cellBbox: string | null
     eovCategories: string[]
-    countries: string[]
+    areas: string[]
     programmeStatus: ProgrammeStatus
     readiness: ReadinessSelection
   },
@@ -73,7 +73,7 @@ function appendProjectListParams(
   if (eovCategories.length) params.set('eov_category', eovCategories.join(','))
   if (programmeStatus && programmeStatus !== 'all') params.set('status', programmeStatus)
   appendReadinessParams(params, readiness)
-  appendCountryParams(params, countries)
+  appendAreaParams(params, areas)
 }
 
 /** Group project EOVs by top-level category using vocabulary resolver; return entries with label and badge bg. */
@@ -104,7 +104,7 @@ export function ProjectList({
   debouncedSearchQuery = '',
   eovCategories = [],
   eovVocabulary = null,
-  countries = NO_COUNTRIES,
+  areas = NO_AREAS,
   programmeStatus = 'all',
   readiness = EMPTY_READINESS_SELECTION,
 }: ProjectListProps) {
@@ -168,12 +168,12 @@ export function ProjectList({
       searchQuery: debouncedSearchQuery,
       cellBbox,
       eovCategories,
-      countries,
+      areas,
       programmeStatus,
       readiness,
     })
     return params.toString()
-  }, [debouncedSearchQuery, cellBbox, eovCategories, countries, programmeStatus, readiness])
+  }, [debouncedSearchQuery, cellBbox, eovCategories, areas, programmeStatus, readiness])
 
   useEffect(() => {
     pointerOverIdRef.current = null
